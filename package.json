@@ -1,0 +1,29 @@
+{
+  "name": "zpzp-bot-by-neyzzz",
+  "version": "1.0.0",
+  "description": "Bot Discord multifonctions en prefix (FR) — SQLite — prêt pour Pterodactyl",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "multifunction",
+    "prefix",
+    "sqlite"
+  ],
+  "author": "neyzzz",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7",
+    "ms": "^2.1.3"
+  }
+}
