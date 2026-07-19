@@ -2,31 +2,32 @@ const fs = require('fs');
 const path = require('path');
 
 function loadCommands(client) {
-  const commandsPath = path.join(__dirname, '../commands');
-  const categories = fs.readdirSync(commandsPath);
+  const root = path.join(__dirname, '../commands');
+  let count = 0;
 
-  for (const category of categories) {
-    const categoryPath = path.join(commandsPath, category);
-    if (!fs.statSync(categoryPath).isDirectory()) continue;
+  for (const category of fs.readdirSync(root)) {
+    const dir = path.join(root, category);
+    if (!fs.statSync(dir).isDirectory()) continue;
 
-    const files = fs.readdirSync(categoryPath).filter((f) => f.endsWith('.js'));
-    for (const file of files) {
-      const command = require(path.join(categoryPath, file));
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js'))) {
+      const command = require(path.join(dir, file));
       if (!command?.name || typeof command.execute !== 'function') {
-        console.warn(`[CMD] Ignoré: ${category}/${file}`);
+        console.warn(`[CMD] Ignoré ${category}/${file}`);
         continue;
       }
+
       command.category = command.category || category;
+      command.permLevel = command.permLevel || 'user';
       client.commands.set(command.name, command);
-      if (Array.isArray(command.aliases)) {
-        for (const alias of command.aliases) {
-          client.aliases.set(alias, command.name);
-        }
+
+      for (const alias of command.aliases || []) {
+        client.aliases.set(alias, command.name);
       }
+      count += 1;
     }
   }
 
-  console.log(`[CMD] ${client.commands.size} commandes chargées.`);
+  console.log(`[CMD] ${count} commandes chargées`);
 }
 
 module.exports = { loadCommands };

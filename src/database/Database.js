@@ -1,40 +1,38 @@
 const fs = require('fs');
 const path = require('path');
-const Database = require('better-sqlite3');
+const BetterSqlite3 = require('better-sqlite3');
 const config = require('../../config');
 
-class BotDatabase {
-  constructor() {
-    const dir = path.dirname(path.resolve(config.dbPath));
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-    this.db = new Database(config.dbPath);
+class Database {
+  constructor(dbPath) {
+    const resolved = path.resolve(dbPath);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    this.db = new BetterSqlite3(resolved);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
-    this.init();
+    this.#migrate();
   }
 
-  init() {
+  #migrate() {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS guilds (
         id TEXT PRIMARY KEY,
-        prefix TEXT DEFAULT '+',
+        prefix TEXT NOT NULL DEFAULT '+',
+        admin_role TEXT,
+        mod_role TEXT,
         modlog_channel TEXT,
         welcome_channel TEXT,
         welcome_message TEXT DEFAULT 'Bienvenue {user} sur **{server}** ! Tu es le membre n°{count}.',
         leave_channel TEXT,
         leave_message TEXT DEFAULT '{user} a quitté **{server}**.',
         autorole TEXT,
-        suggestion_channel TEXT,
         ticket_category TEXT,
         ticket_log TEXT,
         ticket_support_role TEXT,
-        level_channel TEXT,
-        levels_enabled INTEGER DEFAULT 1,
-        automod_antilink INTEGER DEFAULT 0,
-        automod_antispam INTEGER DEFAULT 0,
-        automod_badwords INTEGER DEFAULT 0,
-        badwords TEXT DEFAULT '[]'
+        automod_antilink INTEGER NOT NULL DEFAULT 0,
+        automod_antispam INTEGER NOT NULL DEFAULT 0,
+        automod_badwords INTEGER NOT NULL DEFAULT 0,
+        badwords TEXT NOT NULL DEFAULT '[]'
       );
 
       CREATE TABLE IF NOT EXISTS warnings (
@@ -46,50 +44,12 @@ class BotDatabase {
         created_at INTEGER NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS economy (
-        guild_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        wallet INTEGER DEFAULT 200,
-        bank INTEGER DEFAULT 0,
-        last_daily INTEGER DEFAULT 0,
-        last_work INTEGER DEFAULT 0,
-        last_crime INTEGER DEFAULT 0,
-        last_rob INTEGER DEFAULT 0,
-        PRIMARY KEY (guild_id, user_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS inventory (
-        guild_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        item_id TEXT NOT NULL,
-        amount INTEGER DEFAULT 0,
-        PRIMARY KEY (guild_id, user_id, item_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS levels (
-        guild_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        xp INTEGER DEFAULT 0,
-        level INTEGER DEFAULT 0,
-        last_xp INTEGER DEFAULT 0,
-        PRIMARY KEY (guild_id, user_id)
-      );
-
       CREATE TABLE IF NOT EXISTS tickets (
         channel_id TEXT PRIMARY KEY,
         guild_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        closed INTEGER DEFAULT 0
-      );
-
-      CREATE TABLE IF NOT EXISTS suggestions (
-        message_id TEXT PRIMARY KEY,
-        guild_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        content TEXT NOT NULL,
-        status TEXT DEFAULT 'pending',
-        created_at INTEGER NOT NULL
+        closed INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS giveaways (
@@ -98,10 +58,10 @@ class BotDatabase {
         guild_id TEXT NOT NULL,
         host_id TEXT NOT NULL,
         prize TEXT NOT NULL,
-        winners INTEGER DEFAULT 1,
+        winners INTEGER NOT NULL DEFAULT 1,
         ends_at INTEGER NOT NULL,
-        ended INTEGER DEFAULT 0,
-        entries TEXT DEFAULT '[]'
+        ended INTEGER NOT NULL DEFAULT 0,
+        entries TEXT NOT NULL DEFAULT '[]'
       );
 
       CREATE TABLE IF NOT EXISTS afk (
@@ -119,15 +79,18 @@ class BotDatabase {
         user_id TEXT NOT NULL,
         content TEXT NOT NULL,
         ends_at INTEGER NOT NULL,
-        sent INTEGER DEFAULT 0
+        sent INTEGER NOT NULL DEFAULT 0
       );
 
-      CREATE TABLE IF NOT EXISTS mutes (
+      CREATE TABLE IF NOT EXISTS mod_cases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         guild_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
-        ends_at INTEGER,
+        moderator_id TEXT NOT NULL,
+        action TEXT NOT NULL,
         reason TEXT,
-        PRIMARY KEY (guild_id, user_id)
+        extra TEXT,
+        created_at INTEGER NOT NULL
       );
     `);
   }
@@ -156,17 +119,15 @@ class BotDatabase {
 
   getPrefix(guildId) {
     if (!guildId) return config.prefix;
-    const guild = this.ensureGuild(guildId);
-    return guild.prefix || config.prefix;
+    return this.ensureGuild(guildId).prefix || config.prefix;
   }
 
   addWarning(guildId, userId, moderatorId, reason) {
-    const info = this.db
+    return this.db
       .prepare(
         'INSERT INTO warnings (guild_id, user_id, moderator_id, reason, created_at) VALUES (?, ?, ?, ?, ?)'
       )
-      .run(guildId, userId, moderatorId, reason, Date.now());
-    return info.lastInsertRowid;
+      .run(guildId, userId, moderatorId, reason, Date.now()).lastInsertRowid;
   }
 
   getWarnings(guildId, userId) {
@@ -178,96 +139,41 @@ class BotDatabase {
   }
 
   clearWarnings(guildId, userId) {
-    const info = this.db
+    return this.db
       .prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?')
-      .run(guildId, userId);
-    return info.changes;
+      .run(guildId, userId).changes;
   }
 
   removeWarning(guildId, warnId) {
-    const info = this.db
+    return this.db
       .prepare('DELETE FROM warnings WHERE guild_id = ? AND id = ?')
-      .run(guildId, warnId);
-    return info.changes;
+      .run(guildId, warnId).changes;
   }
 
-  ensureEconomy(guildId, userId) {
-    this.db
-      .prepare(
-        'INSERT OR IGNORE INTO economy (guild_id, user_id, wallet) VALUES (?, ?, ?)'
-      )
-      .run(guildId, userId, config.economy.startBalance);
-    return this.db
-      .prepare('SELECT * FROM economy WHERE guild_id = ? AND user_id = ?')
-      .get(guildId, userId);
-  }
-
-  updateEconomy(guildId, userId, data) {
-    this.ensureEconomy(guildId, userId);
-    const keys = Object.keys(data);
-    const sets = keys.map((k) => `${k} = ?`).join(', ');
-    this.db
-      .prepare(`UPDATE economy SET ${sets} WHERE guild_id = ? AND user_id = ?`)
-      .run(...keys.map((k) => data[k]), guildId, userId);
-    return this.ensureEconomy(guildId, userId);
-  }
-
-  getInventory(guildId, userId) {
+  addModCase(guildId, { userId, moderatorId, action, reason, extra }) {
     return this.db
       .prepare(
-        'SELECT * FROM inventory WHERE guild_id = ? AND user_id = ? AND amount > 0'
+        `INSERT INTO mod_cases (guild_id, user_id, moderator_id, action, reason, extra, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .all(guildId, userId);
+      .run(
+        guildId,
+        userId || null,
+        moderatorId,
+        action,
+        reason || null,
+        extra || null,
+        Date.now()
+      ).lastInsertRowid;
   }
 
-  addItem(guildId, userId, itemId, amount = 1) {
-    this.db
-      .prepare(
-        `INSERT INTO inventory (guild_id, user_id, item_id, amount)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(guild_id, user_id, item_id)
-         DO UPDATE SET amount = amount + excluded.amount`
-      )
-      .run(guildId, userId, itemId, amount);
-  }
-
-  ensureLevel(guildId, userId) {
-    this.db
-      .prepare('INSERT OR IGNORE INTO levels (guild_id, user_id) VALUES (?, ?)')
-      .run(guildId, userId);
-    return this.db
-      .prepare('SELECT * FROM levels WHERE guild_id = ? AND user_id = ?')
-      .get(guildId, userId);
-  }
-
-  updateLevel(guildId, userId, data) {
-    this.ensureLevel(guildId, userId);
-    const keys = Object.keys(data);
-    const sets = keys.map((k) => `${k} = ?`).join(', ');
-    this.db
-      .prepare(`UPDATE levels SET ${sets} WHERE guild_id = ? AND user_id = ?`)
-      .run(...keys.map((k) => data[k]), guildId, userId);
-    return this.ensureLevel(guildId, userId);
-  }
-
-  getTopEconomy(guildId, limit = 10) {
+  getModCases(guildId, userId, limit = 10) {
     return this.db
       .prepare(
-        `SELECT user_id, wallet, bank, (wallet + bank) AS total
-         FROM economy WHERE guild_id = ?
-         ORDER BY total DESC LIMIT ?`
+        `SELECT * FROM mod_cases WHERE guild_id = ? AND user_id = ?
+         ORDER BY created_at DESC LIMIT ?`
       )
-      .all(guildId, limit);
-  }
-
-  getTopLevels(guildId, limit = 10) {
-    return this.db
-      .prepare(
-        `SELECT user_id, xp, level FROM levels
-         WHERE guild_id = ?
-         ORDER BY level DESC, xp DESC LIMIT ?`
-      )
-      .all(guildId, limit);
+      .all(guildId, userId, limit);
   }
 
   createTicket(channelId, guildId, userId) {
@@ -294,26 +200,6 @@ class BotDatabase {
     this.db.prepare('UPDATE tickets SET closed = 1 WHERE channel_id = ?').run(channelId);
   }
 
-  addSuggestion(messageId, guildId, userId, content) {
-    this.db
-      .prepare(
-        'INSERT INTO suggestions (message_id, guild_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)'
-      )
-      .run(messageId, guildId, userId, content, Date.now());
-  }
-
-  getSuggestion(messageId) {
-    return this.db
-      .prepare('SELECT * FROM suggestions WHERE message_id = ?')
-      .get(messageId);
-  }
-
-  updateSuggestion(messageId, status) {
-    this.db
-      .prepare('UPDATE suggestions SET status = ? WHERE message_id = ?')
-      .run(status, messageId);
-  }
-
   createGiveaway(data) {
     this.db
       .prepare(
@@ -322,13 +208,13 @@ class BotDatabase {
          VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
       )
       .run(
-        data.message_id,
-        data.channel_id,
-        data.guild_id,
-        data.host_id,
+        data.messageId,
+        data.channelId,
+        data.guildId,
+        data.hostId,
         data.prize,
         data.winners,
-        data.ends_at,
+        data.endsAt,
         JSON.stringify(data.entries || [])
       );
   }
@@ -337,14 +223,14 @@ class BotDatabase {
     const row = this.db
       .prepare('SELECT * FROM giveaways WHERE message_id = ?')
       .get(messageId);
-    if (row) row.entries = JSON.parse(row.entries || '[]');
-    return row;
+    if (!row) return null;
+    return { ...row, entries: JSON.parse(row.entries || '[]') };
   }
 
   updateGiveaway(messageId, data) {
-    const keys = Object.keys(data);
     const payload = { ...data };
     if (payload.entries) payload.entries = JSON.stringify(payload.entries);
+    const keys = Object.keys(payload);
     const sets = keys.map((k) => `${k} = ?`).join(', ');
     this.db
       .prepare(`UPDATE giveaways SET ${sets} WHERE message_id = ?`)
@@ -352,17 +238,16 @@ class BotDatabase {
   }
 
   getActiveGiveaways() {
-    const rows = this.db
+    return this.db
       .prepare('SELECT * FROM giveaways WHERE ended = 0')
-      .all();
-    return rows.map((r) => ({ ...r, entries: JSON.parse(r.entries || '[]') }));
+      .all()
+      .map((r) => ({ ...r, entries: JSON.parse(r.entries || '[]') }));
   }
 
   setAfk(guildId, userId, reason) {
     this.db
       .prepare(
-        `INSERT INTO afk (guild_id, user_id, reason, since)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO afk (guild_id, user_id, reason, since) VALUES (?, ?, ?, ?)
          ON CONFLICT(guild_id, user_id)
          DO UPDATE SET reason = excluded.reason, since = excluded.since`
       )
@@ -382,12 +267,11 @@ class BotDatabase {
   }
 
   addReminder(guildId, channelId, userId, content, endsAt) {
-    const info = this.db
+    return this.db
       .prepare(
         'INSERT INTO reminders (guild_id, channel_id, user_id, content, ends_at) VALUES (?, ?, ?, ?, ?)'
       )
-      .run(guildId, channelId, userId, content, endsAt);
-    return info.lastInsertRowid;
+      .run(guildId, channelId, userId, content, endsAt).lastInsertRowid;
   }
 
   getDueReminders() {
@@ -401,4 +285,4 @@ class BotDatabase {
   }
 }
 
-module.exports = BotDatabase;
+module.exports = Database;

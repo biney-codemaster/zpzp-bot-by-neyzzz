@@ -8,104 +8,47 @@ const {
 const { color } = require('./embeds');
 
 const CATEGORIES = [
-  {
-    id: 'moderation',
-    label: 'Modération',
-    emoji: '🛡️',
-    description: 'Sanctionner et gérer le serveur',
-  },
-  {
-    id: 'utility',
-    label: 'Utilitaires',
-    emoji: '🛠️',
-    description: 'Infos, outils et aides du quotidien',
-  },
-  {
-    id: 'fun',
-    label: 'Fun',
-    emoji: '🎉',
-    description: 'Jeux, blagues et commandes fun',
-  },
-  {
-    id: 'economy',
-    label: 'Économie',
-    emoji: '💰',
-    description: 'Argent, boutique et classements',
-  },
-  {
-    id: 'levels',
-    label: 'Niveaux',
-    emoji: '📈',
-    description: 'XP, ranks et progression',
-  },
-  {
-    id: 'tickets',
-    label: 'Tickets',
-    emoji: '🎫',
-    description: 'Support et tickets privés',
-  },
-  {
-    id: 'suggestions',
-    label: 'Suggestions',
-    emoji: '💡',
-    description: 'Proposer et gérer des idées',
-  },
-  {
-    id: 'giveaways',
-    label: 'Giveaways',
-    emoji: '🎁',
-    description: 'Lancer et gérer des concours',
-  },
-  {
-    id: 'config',
-    label: 'Configuration',
-    emoji: '⚙️',
-    description: 'Réglages du bot sur le serveur',
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    emoji: '👑',
-    description: 'Commandes propriétaire du bot',
-    ownerOnly: true,
-  },
+  { id: 'moderation', label: 'Modération', emoji: '🛡️', description: 'Sanctions et gestion du serveur' },
+  { id: 'utility', label: 'Utilitaires', emoji: '🛠️', description: 'Infos et outils du quotidien' },
+  { id: 'fun', label: 'Fun', emoji: '🎉', description: 'Jeux et commandes fun' },
+  { id: 'tickets', label: 'Tickets', emoji: '🎫', description: 'Support et tickets privés' },
+  { id: 'giveaways', label: 'Giveaways', emoji: '🎁', description: 'Concours et tirages' },
+  { id: 'config', label: 'Configuration', emoji: '⚙️', description: 'Réglages du bot' },
+  { id: 'admin', label: 'Admin', emoji: '👑', description: 'Commandes propriétaire', ownerOnly: true },
 ];
 
-function getVisibleCategories(client, userId) {
-  return CATEGORIES.filter((cat) => {
-    if (cat.ownerOnly && !client.config.ownerIds.includes(userId)) return false;
-    return getCategoryCommands(client, cat.id, userId).length > 0;
-  });
-}
-
-function getCategoryCommands(client, categoryId, userId) {
+function cmdsIn(client, categoryId, userId) {
   return [...client.commands.values()]
-    .filter((cmd) => {
-      if (cmd.category !== categoryId) return false;
-      if (cmd.ownerOnly && !client.config.ownerIds.includes(userId)) return false;
+    .filter((c) => {
+      if (c.category !== categoryId) return false;
+      if ((c.ownerOnly || c.permLevel === 'owner') && !client.config.ownerIds.includes(userId)) {
+        return false;
+      }
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function categoryLabel(categoryId) {
-  const cat = CATEGORIES.find((c) => c.id === categoryId);
-  return cat ? `${cat.emoji} ${cat.label}` : categoryId;
+function visibleCategories(client, userId) {
+  return CATEGORIES.filter((cat) => {
+    if (cat.ownerOnly && !client.config.ownerIds.includes(userId)) return false;
+    return cmdsIn(client, cat.id, userId).length > 0;
+  });
+}
+
+function categoryLabel(id) {
+  const cat = CATEGORIES.find((c) => c.id === id);
+  return cat ? `${cat.emoji} ${cat.label}` : id;
 }
 
 function buildHomeEmbed(client, user, prefix) {
-  const categories = getVisibleCategories(client, user.id);
-  const total = [...client.commands.values()].filter((cmd) => {
-    if (cmd.ownerOnly && !client.config.ownerIds.includes(user.id)) return false;
+  const cats = visibleCategories(client, user.id);
+  const total = [...client.commands.values()].filter((c) => {
+    if ((c.ownerOnly || c.permLevel === 'owner') && !client.config.ownerIds.includes(user.id)) {
+      return false;
+    }
     return true;
   }).length;
-
-  const categoryLines = categories
-    .map((cat) => {
-      const count = getCategoryCommands(client, cat.id, user.id).length;
-      return `${cat.emoji} **${cat.label}** — ${cat.description} · \`${count}\``;
-    })
-    .join('\n');
 
   return new EmbedBuilder()
     .setColor(color())
@@ -113,21 +56,26 @@ function buildHomeEmbed(client, user, prefix) {
       name: `${client.user.username} • Centre d'aide`,
       iconURL: client.user.displayAvatarURL({ size: 128 }),
     })
-    .setTitle('Bienvenue')
+    .setTitle('Accueil')
     .setDescription(
       [
-        `Salut ${user}, voici le menu d'aide du bot.`,
+        `Salut ${user}.`,
         '',
         `**Préfixe :** \`${prefix}\``,
         `**Commandes :** \`${total}\``,
         '',
-        'Utilise le **menu** ci-dessous pour ouvrir une catégorie.',
-        `Tu peux aussi faire \`${prefix}help <commande>\` pour le détail.`,
+        'Choisis une catégorie dans le menu ci-dessous.',
+        `Détail d'une commande : \`${prefix}help <commande>\``,
       ].join('\n')
     )
     .addFields({
       name: 'Catégories',
-      value: categoryLines || 'Aucune catégorie disponible.',
+      value: cats
+        .map(
+          (c) =>
+            `${c.emoji} **${c.label}** — ${c.description} · \`${cmdsIn(client, c.id, user.id).length}\``
+        )
+        .join('\n'),
     })
     .setThumbnail(client.user.displayAvatarURL({ size: 256 }))
     .setFooter({
@@ -139,7 +87,7 @@ function buildHomeEmbed(client, user, prefix) {
 
 function buildCategoryEmbed(client, user, prefix, categoryId) {
   const cat = CATEGORIES.find((c) => c.id === categoryId);
-  const commands = getCategoryCommands(client, categoryId, user.id);
+  const commands = cmdsIn(client, categoryId, user.id);
 
   const embed = new EmbedBuilder()
     .setColor(color())
@@ -148,7 +96,7 @@ function buildCategoryEmbed(client, user, prefix, categoryId) {
       iconURL: client.user.displayAvatarURL({ size: 128 }),
     })
     .setTitle(cat ? `${cat.emoji} ${cat.label}` : 'Catégorie')
-    .setDescription(cat?.description || 'Commandes de cette catégorie')
+    .setDescription(cat?.description || 'Commandes')
     .setFooter({
       text: `${commands.length} commande${commands.length > 1 ? 's' : ''} • ${user.username}`,
       iconURL: user.displayAvatarURL({ size: 64 }),
@@ -156,36 +104,25 @@ function buildCategoryEmbed(client, user, prefix, categoryId) {
     .setTimestamp();
 
   if (!commands.length) {
-    return embed.addFields({ name: 'Commandes', value: '_Aucune commande._' });
+    return embed.addFields({ name: 'Commandes', value: '_Aucune._' });
   }
 
-  // Découpe en fields Discord (max 1024) pour rester propre
   let chunk = '';
-  let index = 1;
-
+  let part = 1;
   for (const cmd of commands) {
     const usage = cmd.usage ? ` ${cmd.usage}` : '';
-    const line = `▸ \`${prefix}${cmd.name}${usage}\`\n└ ${cmd.description || 'Pas de description'}\n\n`;
-
+    const line = `▸ \`${prefix}${cmd.name}${usage}\`\n└ ${cmd.description || '—'}\n\n`;
     if ((chunk + line).length > 1000) {
-      embed.addFields({
-        name: index === 1 ? 'Commandes' : 'Suite',
-        value: chunk.trimEnd(),
-      });
+      embed.addFields({ name: part === 1 ? 'Commandes' : 'Suite', value: chunk.trimEnd() });
       chunk = line;
-      index += 1;
+      part += 1;
     } else {
       chunk += line;
     }
   }
-
   if (chunk) {
-    embed.addFields({
-      name: index === 1 ? 'Commandes' : 'Suite',
-      value: chunk.trimEnd(),
-    });
+    embed.addFields({ name: part === 1 ? 'Commandes' : 'Suite', value: chunk.trimEnd() });
   }
-
   return embed;
 }
 
@@ -193,11 +130,11 @@ function buildCommandEmbed(client, command, prefix) {
   return new EmbedBuilder()
     .setColor(color())
     .setAuthor({
-      name: `${client.user.username} • Fiche commande`,
+      name: `${client.user.username} • Commande`,
       iconURL: client.user.displayAvatarURL({ size: 128 }),
     })
     .setTitle(`${prefix}${command.name}`)
-    .setDescription(command.description || 'Pas de description')
+    .setDescription(command.description || '—')
     .addFields(
       {
         name: 'Usage',
@@ -210,33 +147,24 @@ function buildCommandEmbed(client, command, prefix) {
           : 'Aucun',
         inline: true,
       },
-      {
-        name: 'Catégorie',
-        value: categoryLabel(command.category),
-        inline: true,
-      },
-      {
-        name: 'Cooldown',
-        value: `${command.cooldown || 3}s`,
-        inline: true,
-      }
+      { name: 'Catégorie', value: categoryLabel(command.category), inline: true },
+      { name: 'Permission', value: `\`${command.permLevel || 'user'}\``, inline: true }
     )
     .setTimestamp();
 }
 
 function buildHelpComponents(client, userId, selected = null) {
-  const categories = getVisibleCategories(client, userId);
-
+  const cats = visibleCategories(client, userId);
   const select = new StringSelectMenuBuilder()
     .setCustomId(`help_select:${userId}`)
     .setPlaceholder('Choisis une catégorie…')
     .addOptions(
-      categories.map((cat) => ({
-        label: cat.label,
-        value: cat.id,
-        description: cat.description.slice(0, 100),
-        emoji: cat.emoji,
-        default: selected === cat.id,
+      cats.map((c) => ({
+        label: c.label,
+        value: c.id,
+        description: c.description.slice(0, 100),
+        emoji: c.emoji,
+        default: selected === c.id,
       }))
     );
 
@@ -244,13 +172,11 @@ function buildHelpComponents(client, userId, selected = null) {
     new ButtonBuilder()
       .setCustomId(`help_home:${userId}`)
       .setLabel('Accueil')
-      .setEmoji('🏠')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!selected),
     new ButtonBuilder()
       .setCustomId(`help_close:${userId}`)
       .setLabel('Fermer')
-      .setEmoji('✖️')
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -258,12 +184,9 @@ function buildHelpComponents(client, userId, selected = null) {
 }
 
 module.exports = {
-  CATEGORIES,
-  getVisibleCategories,
-  getCategoryCommands,
-  categoryLabel,
   buildHomeEmbed,
   buildCategoryEmbed,
   buildCommandEmbed,
   buildHelpComponents,
+  categoryLabel,
 };

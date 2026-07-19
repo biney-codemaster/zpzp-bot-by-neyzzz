@@ -1,69 +1,61 @@
 # ZPZP Bot by neyzzz
 
-Bot Discord **multifonctions en prefix** (français), SQLite, prêt pour **Pterodactyl**.
+Bot Discord **multifonctions prefix** — français — SQLite — prêt **Pterodactyl** (Node 18+).
 
-Préfixe par défaut : `+` (modifiable par serveur avec `+setprefix`)
+Rebuild propre v2 : modules ciblés, permissions custom, embeds blancs, menu d’aide interactif.
 
-## Fonctionnalités
+## Modules
 
-- **Modération** — ban, kick, mute/timeout, warn, purge, lock, slowmode, softban…
-- **Utilitaires** — help, ping, userinfo, serverinfo, avatar, poll, remind, afk, snipe, calc…
-- **Fun** — 8ball, meme, cat/dog, rps, love, jokes…
-- **Économie** — daily, work, crime, rob, bank, shop, inventory, leaderboard
-- **Niveaux / XP** — rank, classement, level-up automatiques
-- **Tickets** — panel bouton + close/add/remove
-- **Suggestions** — suggest / approve / deny
-- **Giveaways** — gstart / gend / greroll
-- **Config** — prefix, welcome, leave, autorole, modlog, automod (anti-lien, anti-spam, mots interdits)
+| Module | Contenu |
+|---|---|
+| Modération | ban, kick, mute, warn, purge, lock, softban, cases… + logs détaillés |
+| Auto-mod | anti-lien, anti-spam, mots interdits |
+| Welcome | welcome / leave / autorole |
+| Tickets | panel bouton, close, add/remove |
+| Giveaways | gstart / gend / greroll |
+| Fun | 8ball, meme, cat/dog, rps… |
+| Utilitaires | help interactif, infos, poll, remind, afk, snipe… |
+| Config | prefix, rôles staff, modlog, automod… |
 
-## Installation locale
+**Non inclus** (volontaire) : économie, niveaux, suggestions, musique.
 
-```bash
-npm install
-cp .env.example .env
-# Édite .env et mets ton DISCORD_TOKEN
-npm start
+## Permissions custom
+
+| Niveau | Qui |
+|---|---|
+| `owner` | IDs dans `OWNER_IDS` |
+| `admin` | Rôle admin bot **ou** Admin Discord / owner serveur |
+| `mod` | Rôle modo bot (+ admin) |
+| `user` | Tout le monde |
+
+Setup recommandé :
+```text
++setadminrole @Admin
++setmodrole @Modo
++setmodlog #logs
 ```
 
-## Portail Discord (obligatoire)
+## Installation / Ptero
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) → ton application → **Bot**
-2. Active ces **Privileged Gateway Intents** :
-   - Server Members Intent
-   - Message Content Intent
-3. Invite le bot avec les permissions Administrateur (ou au minimum Manage Channels/Roles/Messages, Ban, Kick, Moderate Members, etc.)
+1. Egg **Node.js 18+**
+2. Variables d’environnement :
+   - `DISCORD_TOKEN` *(requis)*
+   - `PREFIX=+`
+   - `EMBED_COLOR=FFFFFF`
+   - `OWNER_IDS=ton_id`
+3. Startup : `npm install && node index.js`
+4. Persiste le dossier `data/` (SQLite)
+5. Intents Discord : **Message Content** + **Server Members**
 
-## Hébergement Pterodactyl
-
-1. Crée un serveur Node.js (egg Node.js recommandé, Node **18+**)
-2. Upload le projet (ou clone git)
-3. Dans les variables d’environnement du panel, ajoute au minimum :
-   - `DISCORD_TOKEN` = ton token
-   - `PREFIX` = `+` (optionnel)
-   - `OWNER_IDS` = ton ID Discord (optionnel, pour `+eval`)
-4. Startup command : `npm install && node index.js`  
-   ou, si les deps sont déjà installées : `node index.js`
-5. Assure-toi que le dossier `data/` est **persistant** (volume) pour garder la DB SQLite (`data/bot.db`)
-
-### Variables d’environnement
-
-| Variable | Description |
-|---|---|
-| `DISCORD_TOKEN` | Token du bot (**requis**) |
-| `PREFIX` | Préfixe par défaut (`+`) |
-| `EMBED_COLOR` | Couleur hex des embeds (`5865F2`) |
-| `OWNER_IDS` | IDs owner séparés par des virgules |
-| `DB_PATH` | Chemin SQLite (défaut `./data/bot.db`) |
-
-## Commandes utiles au démarrage
+## Premiers réglages
 
 ```text
 +help
-+setprefix !
-+setmodlog #logs
++setadminrole @Admin
++setmodrole @Staff
++setmodlog #mod-logs
 +setwelcome #accueil Bienvenue {user} sur {server} !
 +ticketsetup CATEGORY_ID #panel @Support #logs-tickets
-+setsuggest #suggestions
 +automod antilink on
 +automod antispam on
 ```
@@ -74,16 +66,11 @@ npm start
 index.js
 config.js
 src/
-  commands/   # commandes par catégorie
-  events/     # ready, messages, welcome, tickets…
-  database/   # SQLite (better-sqlite3)
-  handlers/   # chargement cmds/events
-  utils/      # embeds, helpers, modlog, giveaways
-data/         # base SQLite (persistante)
+  commands/     # 1 fichier = 1 commande
+  events/
+  handlers/
+  database/
+  services/
+  utils/
+data/           # bot.db (persistant)
 ```
-
-## Notes
-
-- Bot **privé** : un serveur ou peu de serveurs, pas conçu comme bot public listé.
-- Pas de musique volontairement : sur Ptero, ffmpeg/voice est souvent fragile. Tout le reste est pensé pour marcher out-of-the-box.
-- Les APIs fun (meme/cat/dog) nécessitent un accès internet sortant depuis le node Ptero.

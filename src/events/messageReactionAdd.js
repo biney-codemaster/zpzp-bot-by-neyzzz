@@ -2,7 +2,6 @@ module.exports = {
   name: 'messageReactionAdd',
   async execute(client, reaction, user) {
     if (user.bot) return;
-
     if (reaction.partial) {
       try {
         await reaction.fetch();
@@ -10,7 +9,6 @@ module.exports = {
         return;
       }
     }
-
     if (reaction.emoji.name !== '🎉') return;
 
     const giveaway = client.db.getGiveaway(reaction.message.id);

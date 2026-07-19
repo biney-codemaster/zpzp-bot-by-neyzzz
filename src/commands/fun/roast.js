@@ -1,22 +1,10 @@
 const { fetchMember, pick } = require('../../utils/helpers');
 const { info } = require('../../utils/embeds');
-
-const roasts = [
-  'Tu es la raison pour laquelle les mode avion existent.',
-  'Ton Wi-Fi a plus de présence que toi.',
-  'Même ChatGPT refuse de te répondre parfois.',
-  'Tu as le charisme d\'une erreur 404.',
-  'Si la médiocrité était un sport, tu serais professionnel.',
-  'Ton aura buffer tellement fort que Discord lag.',
-];
-
+const roasts = ['ton Wi-Fi a plus de présence que toi.', "t'as le charisme d'une erreur 404.", 'même le mode avion te trouve distant.', 'ton aura buffer trop fort.'];
 module.exports = {
-  name: 'roast',
-  description: 'Roast quelqu\'un (humour)',
-  category: 'fun',
-  usage: '[membre]',
+  name: 'roast', description: 'Roast (humour)', category: 'fun', usage: '[membre]', permLevel: 'user',
   async execute(client, message, args) {
     const member = (await fetchMember(message, args[0])) || message.member;
-    return message.reply({ embeds: [info(`🔥 ${member}, ${pick(roasts)}`)] });
+    return message.reply({ embeds: [info(`${member}, ${pick(roasts)}`)] });
   },
 };

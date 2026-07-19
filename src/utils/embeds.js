@@ -2,7 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const config = require('../../config');
 
 function color() {
-  return Number.parseInt(config.embedColor.replace('#', ''), 16);
+  return Number.parseInt(config.embedColor, 16) || 0xffffff;
 }
 
 function base(title, description) {
@@ -13,19 +13,15 @@ function base(title, description) {
 }
 
 function success(description, title = 'Succès') {
-  return base(title, description).setColor(0x57f287);
-}
-
-function error(description, title = 'Erreur') {
-  return base(title, description).setColor(0xed4245);
-}
-
-function info(description, title = 'Information') {
   return base(title, description);
 }
 
-function warn(description, title = 'Attention') {
-  return base(title, description).setColor(0xfee75c);
+function error(description, title = 'Erreur') {
+  return base(title, description);
 }
 
-module.exports = { base, success, error, info, warn, color };
+function info(description, title = null) {
+  return base(title, description);
+}
+
+module.exports = { color, base, success, error, info };

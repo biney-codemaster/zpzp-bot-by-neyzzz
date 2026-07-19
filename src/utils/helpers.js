@@ -1,28 +1,24 @@
 const ms = require('ms');
 
-function parseMember(message, arg) {
-  if (!arg) return message.mentions.members.first() || null;
+async function fetchMember(message, arg) {
+  if (!arg && message.mentions.members.size) {
+    return message.mentions.members.first();
+  }
+  if (!arg) return null;
+
   const cleaned = arg.replace(/[<@!>]/g, '');
-  return (
+  const cached =
     message.mentions.members.first() ||
     message.guild.members.cache.get(cleaned) ||
     message.guild.members.cache.find(
       (m) =>
         m.user.username.toLowerCase() === arg.toLowerCase() ||
         m.displayName.toLowerCase() === arg.toLowerCase()
-    ) ||
-    null
-  );
-}
+    );
 
-async function fetchMember(message, arg) {
-  let member = parseMember(message, arg);
-  if (member) return member;
-  if (!arg) return null;
-  const cleaned = arg.replace(/[<@!>]/g, '');
+  if (cached) return cached;
   try {
-    member = await message.guild.members.fetch(cleaned);
-    return member;
+    return await message.guild.members.fetch(cleaned);
   } catch {
     return null;
   }
@@ -45,7 +41,9 @@ function parseRole(message, arg) {
   return (
     message.mentions.roles.first() ||
     message.guild.roles.cache.get(cleaned) ||
-    message.guild.roles.cache.find((r) => r.name.toLowerCase() === arg.toLowerCase()) ||
+    message.guild.roles.cache.find(
+      (r) => r.name.toLowerCase() === arg.toLowerCase()
+    ) ||
     null
   );
 }
@@ -56,14 +54,6 @@ function randomInt(min, max) {
 
 function pick(array) {
   return array[Math.floor(Math.random() * array.length)];
-}
-
-function formatNumber(n) {
-  return Number(n).toLocaleString('fr-FR');
-}
-
-function xpForLevel(level) {
-  return 5 * level * level + 50 * level + 100;
 }
 
 function formatDuration(msValue) {
@@ -86,16 +76,11 @@ function parseDuration(input) {
   return typeof value === 'number' && value > 0 ? value : null;
 }
 
-function progressBar(current, max, size = 10) {
-  const ratio = Math.max(0, Math.min(1, current / Math.max(max, 1)));
-  const filled = Math.round(ratio * size);
-  return '█'.repeat(filled) + '░'.repeat(size - filled);
-}
-
 function canModerate(moderator, target) {
   if (!target) return false;
   if (target.id === moderator.id) return false;
   if (target.id === moderator.guild.ownerId) return false;
+  if (target.user?.bot && target.id === moderator.client.user.id) return false;
   if (moderator.id === moderator.guild.ownerId) return true;
   return moderator.roles.highest.position > target.roles.highest.position;
 }
@@ -112,17 +97,13 @@ function replacePlaceholders(text, { user, guild, memberCount }) {
 }
 
 module.exports = {
-  parseMember,
   fetchMember,
   parseChannel,
   parseRole,
   randomInt,
   pick,
-  formatNumber,
-  xpForLevel,
   formatDuration,
   parseDuration,
-  progressBar,
   canModerate,
   replacePlaceholders,
 };

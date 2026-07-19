@@ -2,13 +2,13 @@ const fs = require('fs');
 const path = require('path');
 
 function loadEvents(client) {
-  const eventsPath = path.join(__dirname, '../events');
-  const files = fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'));
+  const dir = path.join(__dirname, '../events');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
 
   for (const file of files) {
-    const event = require(path.join(eventsPath, file));
+    const event = require(path.join(dir, file));
     if (!event?.name || typeof event.execute !== 'function') {
-      console.warn(`[EVT] Ignoré: ${file}`);
+      console.warn(`[EVT] Ignoré ${file}`);
       continue;
     }
 
@@ -19,7 +19,7 @@ function loadEvents(client) {
     }
   }
 
-  console.log(`[EVT] ${files.length} événements chargés.`);
+  console.log(`[EVT] ${files.length} événements chargés`);
 }
 
 module.exports = { loadEvents };
