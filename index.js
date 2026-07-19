@@ -3,15 +3,14 @@ const {
   GatewayIntentBits,
   Partials,
   Collection,
-  ActivityType,
 } = require('discord.js');
 const config = require('./config');
-const BotDatabase = require('./src/database/database');
+const Database = require('./src/database/Database');
 const { loadCommands } = require('./src/handlers/commandHandler');
 const { loadEvents } = require('./src/handlers/eventHandler');
 
 if (!config.token) {
-  console.error('❌ DISCORD_TOKEN manquant. Copie .env.example vers .env et renseigne le token.');
+  console.error('[FATAL] DISCORD_TOKEN missing. Copy .env.example to .env');
   process.exit(1);
 }
 
@@ -22,9 +21,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
   ],
   partials: [
     Partials.Message,
@@ -35,27 +32,21 @@ const client = new Client({
   ],
 });
 
+client.config = config;
+client.db = new Database(config.dbPath);
 client.commands = new Collection();
 client.aliases = new Collection();
 client.cooldowns = new Collection();
-client.config = config;
-client.db = new BotDatabase();
+client.snipes = new Map();
 client.spamMap = new Map();
 
 loadCommands(client);
 loadEvents(client);
 
-process.on('unhandledRejection', (err) => {
-  console.error('[unhandledRejection]', err);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('[uncaughtException]', err);
-});
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
+process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
 
 client.login(config.token).catch((err) => {
-  console.error('❌ Connexion Discord impossible:', err.message);
+  console.error('[FATAL] Login failed:', err.message);
   process.exit(1);
 });
-
-module.exports = client;

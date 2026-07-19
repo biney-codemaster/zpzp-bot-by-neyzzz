@@ -1,27 +1,10 @@
 const { success, error } = require('../../utils/embeds');
-
 module.exports = {
-  name: 'setprefix',
-  description: 'Change le préfixe du serveur',
-  category: 'config',
-  aliases: ['prefix'],
-  usage: '<nouveau_préfixe>',
-  permissions: ['ManageGuild'],
+  name: 'setprefix', description: 'Change the prefix', category: 'config', aliases: ['prefix'], usage: '<prefix>', permLevel: 'admin',
   async execute(client, message, args) {
     const prefix = args[0];
-    if (!prefix || prefix.length > 5) {
-      return message.reply({
-        embeds: [error('Donne un préfixe (1 à 5 caractères).')],
-      });
-    }
-
+    if (!prefix || prefix.length > 5) return message.reply({ embeds: [error('Prefix must be 1 to 5 characters.')] });
     client.db.updateGuild(message.guild.id, { prefix });
-    return message.reply({
-      embeds: [
-        success(
-          `Nouveau préfixe : \`${prefix}\`\nExemple : \`${prefix}help\``
-        ),
-      ],
-    });
+    return message.reply({ embeds: [success(`New prefix: \`${prefix}\`\nExample: \`${prefix}help\``)] });
   },
 };

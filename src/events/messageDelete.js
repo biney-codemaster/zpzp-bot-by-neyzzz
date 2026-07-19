@@ -1,9 +1,7 @@
 module.exports = {
   name: 'messageDelete',
   execute(client, message) {
-    if (!message.guild || message.author?.bot || !message.author) return;
-    if (!client.snipes) client.snipes = new Map();
-
+    if (!message.guild || !message.author || message.author.bot) return;
     client.snipes.set(message.channel.id, {
       content: message.content,
       author: message.author.tag,

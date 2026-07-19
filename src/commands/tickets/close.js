@@ -1,45 +1,36 @@
-const { PermissionFlagsBits, EmbedBuilder } = require('discord.js');
-const { success, error } = require('../../utils/embeds');
+const { EmbedBuilder } = require('discord.js');
+const { success, error, color } = require('../../utils/embeds');
+const { hasLevel } = require('../../utils/permissions');
 
 module.exports = {
   name: 'close',
-  description: 'Ferme le ticket actuel',
+  description: 'Close the current ticket',
   category: 'tickets',
-  aliases: ['ticketclose', 'fclose'],
+  aliases: ['ticketclose'],
+  permLevel: 'user',
   async execute(client, message) {
     const ticket = client.db.getTicket(message.channel.id);
-    if (!ticket || ticket.closed) return message.reply({ embeds: [error('Ce salon n\'est pas un ticket ouvert.')] });
-
-    const guildData = client.db.ensureGuild(message.guild.id);
-    const isStaff =
-      message.member.permissions.has(PermissionFlagsBits.ManageChannels) ||
-      (guildData.ticket_support_role && message.member.roles.cache.has(guildData.ticket_support_role)) ||
+    if (!ticket || ticket.closed) return message.reply({ embeds: [error('This is not an open ticket.')] });
+    const g = client.db.ensureGuild(message.guild.id);
+    const allowed =
+      hasLevel(message.member, 'mod', g, client.config.ownerIds) ||
+      (g.ticket_support_role && message.member.roles.cache.has(g.ticket_support_role)) ||
       ticket.user_id === message.author.id;
-
-    if (!isStaff) return message.reply({ embeds: [error('Tu ne peux pas fermer ce ticket.')] });
-
-    await message.reply({ embeds: [success('Ticket fermé. Suppression dans 5 secondes...')] });
+    if (!allowed) return message.reply({ embeds: [error('You cannot close this ticket.')] });
+    await message.reply({ embeds: [success('Closing in 5 seconds...')] });
     client.db.closeTicket(message.channel.id);
-
-    if (guildData.ticket_log) {
-      const log = message.guild.channels.cache.get(guildData.ticket_log);
+    if (g.ticket_log) {
+      const log = message.guild.channels.cache.get(g.ticket_log);
       if (log) {
         await log.send({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xed4245)
-              .setTitle('🎫 Ticket fermé')
-              .addFields(
-                { name: 'Salon', value: message.channel.name, inline: true },
-                { name: 'Auteur', value: `<@${ticket.user_id}>`, inline: true },
-                { name: 'Fermé par', value: `${message.author}`, inline: true }
-              )
-              .setTimestamp(),
-          ],
+          embeds: [new EmbedBuilder().setColor(color()).setTitle('Ticket closed').addFields(
+            { name: 'Channel', value: message.channel.name, inline: true },
+            { name: 'Author', value: `<@${ticket.user_id}>`, inline: true },
+            { name: 'Closed by', value: `${message.author}`, inline: true }
+          ).setTimestamp()],
         }).catch(() => null);
       }
     }
-
-    setTimeout(() => message.channel.delete('Ticket fermé').catch(() => null), 5000);
+    setTimeout(() => message.channel.delete('Ticket closed').catch(() => null), 5000);
   },
 };

@@ -1,0 +1,288 @@
+const fs = require('fs');
+const path = require('path');
+const BetterSqlite3 = require('better-sqlite3');
+const config = require('../../config');
+
+class Database {
+  constructor(dbPath) {
+    const resolved = path.resolve(dbPath);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    this.db = new BetterSqlite3(resolved);
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
+    this.#migrate();
+  }
+
+  #migrate() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS guilds (
+        id TEXT PRIMARY KEY,
+        prefix TEXT NOT NULL DEFAULT '+',
+        admin_role TEXT,
+        mod_role TEXT,
+        modlog_channel TEXT,
+        welcome_channel TEXT,
+        welcome_message TEXT DEFAULT 'Welcome {user} to **{server}**! You are member #{count}.',
+        leave_channel TEXT,
+        leave_message TEXT DEFAULT '{user} left **{server}**.',
+        autorole TEXT,
+        ticket_category TEXT,
+        ticket_log TEXT,
+        ticket_support_role TEXT,
+        automod_antilink INTEGER NOT NULL DEFAULT 0,
+        automod_antispam INTEGER NOT NULL DEFAULT 0,
+        automod_badwords INTEGER NOT NULL DEFAULT 0,
+        badwords TEXT NOT NULL DEFAULT '[]'
+      );
+
+      CREATE TABLE IF NOT EXISTS warnings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        moderator_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS tickets (
+        channel_id TEXT PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        closed INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS giveaways (
+        message_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        guild_id TEXT NOT NULL,
+        host_id TEXT NOT NULL,
+        prize TEXT NOT NULL,
+        winners INTEGER NOT NULL DEFAULT 1,
+        ends_at INTEGER NOT NULL,
+        ended INTEGER NOT NULL DEFAULT 0,
+        entries TEXT NOT NULL DEFAULT '[]'
+      );
+
+      CREATE TABLE IF NOT EXISTS afk (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        since INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        ends_at INTEGER NOT NULL,
+        sent INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS mod_cases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        moderator_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        reason TEXT,
+        extra TEXT,
+        created_at INTEGER NOT NULL
+      );
+    `);
+  }
+
+  ensureGuild(guildId) {
+    this.db
+      .prepare('INSERT OR IGNORE INTO guilds (id, prefix) VALUES (?, ?)')
+      .run(guildId, config.prefix);
+    return this.getGuild(guildId);
+  }
+
+  getGuild(guildId) {
+    return this.db.prepare('SELECT * FROM guilds WHERE id = ?').get(guildId);
+  }
+
+  updateGuild(guildId, data) {
+    this.ensureGuild(guildId);
+    const keys = Object.keys(data);
+    if (!keys.length) return this.getGuild(guildId);
+    const sets = keys.map((k) => `${k} = ?`).join(', ');
+    this.db
+      .prepare(`UPDATE guilds SET ${sets} WHERE id = ?`)
+      .run(...keys.map((k) => data[k]), guildId);
+    return this.getGuild(guildId);
+  }
+
+  getPrefix(guildId) {
+    if (!guildId) return config.prefix;
+    return this.ensureGuild(guildId).prefix || config.prefix;
+  }
+
+  addWarning(guildId, userId, moderatorId, reason) {
+    return this.db
+      .prepare(
+        'INSERT INTO warnings (guild_id, user_id, moderator_id, reason, created_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(guildId, userId, moderatorId, reason, Date.now()).lastInsertRowid;
+  }
+
+  getWarnings(guildId, userId) {
+    return this.db
+      .prepare(
+        'SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC'
+      )
+      .all(guildId, userId);
+  }
+
+  clearWarnings(guildId, userId) {
+    return this.db
+      .prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?')
+      .run(guildId, userId).changes;
+  }
+
+  removeWarning(guildId, warnId) {
+    return this.db
+      .prepare('DELETE FROM warnings WHERE guild_id = ? AND id = ?')
+      .run(guildId, warnId).changes;
+  }
+
+  addModCase(guildId, { userId, moderatorId, action, reason, extra }) {
+    return this.db
+      .prepare(
+        `INSERT INTO mod_cases (guild_id, user_id, moderator_id, action, reason, extra, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        guildId,
+        userId || null,
+        moderatorId,
+        action,
+        reason || null,
+        extra || null,
+        Date.now()
+      ).lastInsertRowid;
+  }
+
+  getModCases(guildId, userId, limit = 10) {
+    return this.db
+      .prepare(
+        `SELECT * FROM mod_cases WHERE guild_id = ? AND user_id = ?
+         ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(guildId, userId, limit);
+  }
+
+  createTicket(channelId, guildId, userId) {
+    this.db
+      .prepare(
+        'INSERT INTO tickets (channel_id, guild_id, user_id, created_at) VALUES (?, ?, ?, ?)'
+      )
+      .run(channelId, guildId, userId, Date.now());
+  }
+
+  getTicket(channelId) {
+    return this.db.prepare('SELECT * FROM tickets WHERE channel_id = ?').get(channelId);
+  }
+
+  getOpenTicketByUser(guildId, userId) {
+    return this.db
+      .prepare(
+        'SELECT * FROM tickets WHERE guild_id = ? AND user_id = ? AND closed = 0'
+      )
+      .get(guildId, userId);
+  }
+
+  closeTicket(channelId) {
+    this.db.prepare('UPDATE tickets SET closed = 1 WHERE channel_id = ?').run(channelId);
+  }
+
+  createGiveaway(data) {
+    this.db
+      .prepare(
+        `INSERT INTO giveaways
+         (message_id, channel_id, guild_id, host_id, prize, winners, ends_at, ended, entries)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
+      )
+      .run(
+        data.messageId,
+        data.channelId,
+        data.guildId,
+        data.hostId,
+        data.prize,
+        data.winners,
+        data.endsAt,
+        JSON.stringify(data.entries || [])
+      );
+  }
+
+  getGiveaway(messageId) {
+    const row = this.db
+      .prepare('SELECT * FROM giveaways WHERE message_id = ?')
+      .get(messageId);
+    if (!row) return null;
+    return { ...row, entries: JSON.parse(row.entries || '[]') };
+  }
+
+  updateGiveaway(messageId, data) {
+    const payload = { ...data };
+    if (payload.entries) payload.entries = JSON.stringify(payload.entries);
+    const keys = Object.keys(payload);
+    const sets = keys.map((k) => `${k} = ?`).join(', ');
+    this.db
+      .prepare(`UPDATE giveaways SET ${sets} WHERE message_id = ?`)
+      .run(...keys.map((k) => payload[k]), messageId);
+  }
+
+  getActiveGiveaways() {
+    return this.db
+      .prepare('SELECT * FROM giveaways WHERE ended = 0')
+      .all()
+      .map((r) => ({ ...r, entries: JSON.parse(r.entries || '[]') }));
+  }
+
+  setAfk(guildId, userId, reason) {
+    this.db
+      .prepare(
+        `INSERT INTO afk (guild_id, user_id, reason, since) VALUES (?, ?, ?, ?)
+         ON CONFLICT(guild_id, user_id)
+         DO UPDATE SET reason = excluded.reason, since = excluded.since`
+      )
+      .run(guildId, userId, reason, Date.now());
+  }
+
+  getAfk(guildId, userId) {
+    return this.db
+      .prepare('SELECT * FROM afk WHERE guild_id = ? AND user_id = ?')
+      .get(guildId, userId);
+  }
+
+  removeAfk(guildId, userId) {
+    this.db
+      .prepare('DELETE FROM afk WHERE guild_id = ? AND user_id = ?')
+      .run(guildId, userId);
+  }
+
+  addReminder(guildId, channelId, userId, content, endsAt) {
+    return this.db
+      .prepare(
+        'INSERT INTO reminders (guild_id, channel_id, user_id, content, ends_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(guildId, channelId, userId, content, endsAt).lastInsertRowid;
+  }
+
+  getDueReminders() {
+    return this.db
+      .prepare('SELECT * FROM reminders WHERE sent = 0 AND ends_at <= ?')
+      .all(Date.now());
+  }
+
+  markReminderSent(id) {
+    this.db.prepare('UPDATE reminders SET sent = 1 WHERE id = ?').run(id);
+  }
+}
+
+module.exports = Database;

@@ -3,27 +3,21 @@ const { error, info } = require('../../utils/embeds');
 
 module.exports = {
   name: 'eval',
-  description: 'Évalue du code JS (owner)',
+  description: 'Evaluate JS (owner)',
   category: 'admin',
-  ownerOnly: true,
   usage: '<code>',
+  permLevel: 'owner',
+  ownerOnly: true,
   async execute(client, message, args) {
     const code = args.join(' ');
-    if (!code) return message.reply({ embeds: [error('Donne du code.')] });
-
+    if (!code) return message.reply({ embeds: [error('Provide code.')] });
     try {
       let result = await eval(code);
-      if (typeof result !== 'string') {
-        result = util.inspect(result, { depth: 1 });
-      }
+      if (typeof result !== 'string') result = util.inspect(result, { depth: 1 });
       result = result.replaceAll(client.token, '[TOKEN]');
-      return message.reply({
-        embeds: [info(`\`\`\`js\n${result.slice(0, 3900)}\n\`\`\``, 'Eval')],
-      });
+      return message.reply({ embeds: [info('```js\n' + result.slice(0, 3900) + '\n```', 'Eval')] });
     } catch (err) {
-      return message.reply({
-        embeds: [error(`\`\`\`js\n${String(err).slice(0, 3900)}\n\`\`\``)],
-      });
+      return message.reply({ embeds: [error('```js\n' + String(err).slice(0, 3900) + '\n```')] });
     }
   },
 };
