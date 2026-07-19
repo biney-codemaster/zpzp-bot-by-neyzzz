@@ -1,18 +1,19 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
 const { parseChannel, parseRole } = require('../../utils/helpers');
 const { success, error, color } = require('../../utils/embeds');
+const { applyComponentEmoji, withEmoji } = require('../../utils/emoji');
 
 module.exports = {
   name: 'ticketsetup',
-  description: 'Configure les tickets et envoie le panel',
+  description: 'Configure tickets and send the panel',
   category: 'tickets',
-  usage: '<catégorie_id> [salon_panel] [rôle_support] [salon_logs]',
+  usage: '<category_id> [panel_channel] [support_role] [log_channel]',
   permLevel: 'admin',
   botPermissions: [PermissionFlagsBits.ManageChannels],
   async execute(client, message, args) {
     const category = message.guild.channels.cache.get((args[0] || '').replace(/[<#>]/g, ''));
     if (!category || category.type !== ChannelType.GuildCategory) {
-      return message.reply({ embeds: [error('Donne l\'ID d\'une catégorie.\n`+ticketsetup CATEGORY_ID #panel @Support #logs`')] });
+      return message.reply({ embeds: [error('Provide a category ID.\n`+ticketsetup CATEGORY_ID #panel @Support #logs`')] });
     }
     const panel = parseChannel(message, args[1]) || message.channel;
     const support = parseRole(message, args[2]);
@@ -22,10 +23,23 @@ module.exports = {
       ticket_support_role: support?.id || null,
       ticket_log: log?.id || null,
     });
+
+    const openBtn = new ButtonBuilder()
+      .setCustomId('ticket_create')
+      .setLabel('Open a ticket')
+      .setStyle(ButtonStyle.Primary);
+    applyComponentEmoji(openBtn, 'tickets');
+
     await panel.send({
-      embeds: [new EmbedBuilder().setColor(color()).setTitle('Support').setDescription('Clique pour ouvrir un ticket.').setFooter({ text: message.guild.name })],
-      components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ticket_create').setLabel('Ouvrir un ticket').setStyle(ButtonStyle.Primary))],
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setTitle(withEmoji('tickets', 'Support'))
+          .setDescription('Click the button below to open a ticket.')
+          .setFooter({ text: message.guild.name }),
+      ],
+      components: [new ActionRowBuilder().addComponents(openBtn)],
     });
-    return message.reply({ embeds: [success(`Panel envoyé dans ${panel}.`)] });
+    return message.reply({ embeds: [success(`Panel sent in ${panel}.`)] });
   },
 };

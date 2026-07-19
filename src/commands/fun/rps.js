@@ -1,15 +1,15 @@
 const { pick } = require('../../utils/helpers');
 const { info, error } = require('../../utils/embeds');
 module.exports = {
-  name: 'rps', description: 'Pierre feuille ciseaux', category: 'fun', aliases: ['pfc'], usage: '<pierre|feuille|ciseaux>', permLevel: 'user',
+  name: 'rps', description: 'Rock paper scissors', category: 'fun', usage: '<rock|paper|scissors>', permLevel: 'user',
   async execute(client, message, args) {
-    const map = { pierre: 'pierre', p: 'pierre', feuille: 'feuille', f: 'feuille', ciseaux: 'ciseaux', c: 'ciseaux' };
+    const map = { rock: 'rock', r: 'rock', paper: 'paper', p: 'paper', scissors: 'scissors', s: 'scissors' };
     const user = map[(args[0] || '').toLowerCase()];
-    if (!user) return message.reply({ embeds: [error('Choisis pierre, feuille ou ciseaux.')] });
-    const bot = pick(['pierre', 'feuille', 'ciseaux']);
-    let result = 'Égalité.';
-    if ((user === 'pierre' && bot === 'ciseaux') || (user === 'feuille' && bot === 'pierre') || (user === 'ciseaux' && bot === 'feuille')) result = 'Tu gagnes.';
-    else if (user !== bot) result = 'Tu perds.';
-    return message.reply({ embeds: [info(`Toi : **${user}**\nMoi : **${bot}**\n\n${result}`)] });
+    if (!user) return message.reply({ embeds: [error('Choose rock, paper, or scissors.')] });
+    const bot = pick(['rock', 'paper', 'scissors']);
+    let result = 'Tie.';
+    if ((user === 'rock' && bot === 'scissors') || (user === 'paper' && bot === 'rock') || (user === 'scissors' && bot === 'paper')) result = 'You win.';
+    else if (user !== bot) result = 'You lose.';
+    return message.reply({ embeds: [info(`You: **${user}**\nMe: **${bot}**\n\n${result}`)] });
   },
 };

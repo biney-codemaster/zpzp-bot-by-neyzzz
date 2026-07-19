@@ -6,13 +6,14 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require('discord.js');
-const { error, success, color } = require('../utils/embeds');
+const { error, success, color, info } = require('../utils/embeds');
 const {
   buildHomeEmbed,
   buildCategoryEmbed,
   buildHelpComponents,
 } = require('../utils/helpMenu');
 const { hasLevel } = require('../utils/permissions');
+const { applyComponentEmoji } = require('../utils/emoji');
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -20,7 +21,7 @@ async function handleHelp(client, interaction) {
 
   if (interaction.user.id !== ownerId) {
     await interaction.reply({
-      embeds: [error("Seul l'auteur peut utiliser ce menu.")],
+      embeds: [error('Only the command author can use this menu.')],
       ephemeral: true,
     });
     return true;
@@ -33,7 +34,7 @@ async function handleHelp(client, interaction) {
       embeds: [
         new EmbedBuilder()
           .setColor(color())
-          .setDescription('Menu fermé. Relance `+help` pour le rouvrir.'),
+          .setDescription('Menu closed. Run `+help` to open it again.'),
       ],
       components: [],
     });
@@ -56,6 +57,32 @@ async function handleHelp(client, interaction) {
   return true;
 }
 
+async function handleGiveawayEnter(client, interaction) {
+  const giveaway = client.db.getGiveaway(interaction.message.id);
+  if (!giveaway || giveaway.ended) {
+    return interaction.reply({
+      embeds: [error('This giveaway is no longer active.')],
+      ephemeral: true,
+    });
+  }
+
+  const entries = new Set(giveaway.entries || []);
+  if (entries.has(interaction.user.id)) {
+    return interaction.reply({
+      embeds: [info('You are already entered.')],
+      ephemeral: true,
+    });
+  }
+
+  entries.add(interaction.user.id);
+  client.db.updateGiveaway(interaction.message.id, { entries: [...entries] });
+
+  return interaction.reply({
+    embeds: [success(`You entered the giveaway. Entries: **${entries.size}**`)],
+    ephemeral: true,
+  });
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(client, interaction) {
@@ -68,12 +95,16 @@ module.exports = {
 
     if (!interaction.isButton()) return;
 
+    if (interaction.customId === 'giveaway_enter') {
+      return handleGiveawayEnter(client, interaction);
+    }
+
     if (interaction.customId === 'ticket_create') {
       await interaction.deferReply({ ephemeral: true });
       const g = client.db.ensureGuild(interaction.guild.id);
       if (!g.ticket_category) {
         return interaction.editReply({
-          embeds: [error('Tickets non configurés. Utilise `+ticketsetup`.')],
+          embeds: [error('Tickets are not set up. Use `+ticketsetup`.')],
         });
       }
 
@@ -83,7 +114,7 @@ module.exports = {
       );
       if (existing) {
         return interaction.editReply({
-          embeds: [error(`Ticket déjà ouvert : <#${existing.channel_id}>`)],
+          embeds: [error(`You already have an open ticket: <#${existing.channel_id}>`)],
         });
       }
 
@@ -132,6 +163,12 @@ module.exports = {
 
       client.db.createTicket(channel.id, interaction.guild.id, interaction.user.id);
 
+      const closeBtn = new ButtonBuilder()
+        .setCustomId('ticket_close')
+        .setLabel('Close')
+        .setStyle(ButtonStyle.Danger);
+      applyComponentEmoji(closeBtn, 'close');
+
       await channel.send({
         content: g.ticket_support_role
           ? `${interaction.user} | <@&${g.ticket_support_role}>`
@@ -139,24 +176,15 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setColor(color())
-            .setTitle('Ticket ouvert')
-            .setDescription(
-              `Explique ta demande. Ferme avec le bouton ou \`+close\`.`
-            )
+            .setTitle('Ticket opened')
+            .setDescription('Describe your request. Close with the button or `+close`.')
             .setTimestamp(),
         ],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('ticket_close')
-              .setLabel('Fermer')
-              .setStyle(ButtonStyle.Danger)
-          ),
-        ],
+        components: [new ActionRowBuilder().addComponents(closeBtn)],
       });
 
       return interaction.editReply({
-        embeds: [success(`Ticket créé : ${channel}`)],
+        embeds: [success(`Ticket created: ${channel}`)],
       });
     }
 
@@ -164,7 +192,7 @@ module.exports = {
       const ticket = client.db.getTicket(interaction.channel.id);
       if (!ticket || ticket.closed) {
         return interaction.reply({
-          embeds: [error("Ce n'est pas un ticket ouvert.")],
+          embeds: [error('This is not an open ticket.')],
           ephemeral: true,
         });
       }
@@ -178,13 +206,13 @@ module.exports = {
 
       if (!allowed) {
         return interaction.reply({
-          embeds: [error('Tu ne peux pas fermer ce ticket.')],
+          embeds: [error('You cannot close this ticket.')],
           ephemeral: true,
         });
       }
 
       await interaction.reply({
-        embeds: [success('Fermeture dans 5 secondes…')],
+        embeds: [success('Closing in 5 seconds...')],
       });
       client.db.closeTicket(interaction.channel.id);
 
@@ -196,11 +224,11 @@ module.exports = {
               embeds: [
                 new EmbedBuilder()
                   .setColor(color())
-                  .setTitle('Ticket fermé')
+                  .setTitle('Ticket closed')
                   .addFields(
-                    { name: 'Salon', value: interaction.channel.name, inline: true },
-                    { name: 'Auteur', value: `<@${ticket.user_id}>`, inline: true },
-                    { name: 'Par', value: `${interaction.user}`, inline: true }
+                    { name: 'Channel', value: interaction.channel.name, inline: true },
+                    { name: 'Author', value: `<@${ticket.user_id}>`, inline: true },
+                    { name: 'Closed by', value: `${interaction.user}`, inline: true }
                   )
                   .setTimestamp(),
               ],
@@ -210,7 +238,7 @@ module.exports = {
       }
 
       setTimeout(() => {
-        interaction.channel.delete('Ticket fermé').catch(() => null);
+        interaction.channel.delete('Ticket closed').catch(() => null);
       }, 5000);
     }
   },

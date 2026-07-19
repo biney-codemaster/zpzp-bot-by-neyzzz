@@ -1,76 +1,67 @@
 # ZPZP Bot by neyzzz
 
-Bot Discord **multifonctions prefix** — français — SQLite — prêt **Pterodactyl** (Node 18+).
+Multifunction Discord **prefix** bot — **English** — SQLite — ready for **Pterodactyl** (Node 18+).
 
-Rebuild propre v2 : modules ciblés, permissions custom, embeds blancs, menu d’aide interactif.
+White embeds, custom staff permissions, interactive help menu, custom emojis via `src/utils/emoji.js` (all `null` by default — **no unicode emojis** in the bot).
 
 ## Modules
 
-| Module | Contenu |
+| Module | Contents |
 |---|---|
-| Modération | ban, kick, mute, warn, purge, lock, softban, cases… + logs détaillés |
-| Auto-mod | anti-lien, anti-spam, mots interdits |
+| Moderation | ban, kick, mute, warn, purge, lock, softban, cases… + detailed logs |
+| Automod | anti-link, anti-spam, bad words |
 | Welcome | welcome / leave / autorole |
-| Tickets | panel bouton, close, add/remove |
-| Giveaways | gstart / gend / greroll |
+| Tickets | button panel, close, add/remove |
+| Giveaways | gstart / gend / greroll (Enter button) |
 | Fun | 8ball, meme, cat/dog, rps… |
-| Utilitaires | help interactif, infos, poll, remind, afk, snipe… |
-| Config | prefix, rôles staff, modlog, automod… |
+| Utility | interactive help, info, poll, remind, afk, snipe… |
+| Config | prefix, staff roles, modlog, automod… |
 
-**Non inclus** (volontaire) : économie, niveaux, suggestions, musique.
+**Not included:** economy, levels, suggestions, music.
 
-## Permissions custom
+## Custom emojis
 
-| Niveau | Qui |
+Edit `src/utils/emoji.js`:
+
+```js
+success: '<:ok:1234567890>',  // or null
+error: null,
+```
+
+Use Discord custom emoji format `<:name:id>` / `<a:name:id>`, or leave `null`.
+
+## Custom permissions
+
+| Level | Who |
 |---|---|
-| `owner` | IDs dans `OWNER_IDS` |
-| `admin` | Rôle admin bot **ou** Admin Discord / owner serveur |
-| `mod` | Rôle modo bot (+ admin) |
-| `user` | Tout le monde |
+| `owner` | IDs in `OWNER_IDS` |
+| `admin` | Bot admin role **or** Discord Admin / guild owner |
+| `mod` | Bot mod role (+ admin) |
+| `user` | Everyone |
 
-Setup recommandé :
 ```text
 +setadminrole @Admin
-+setmodrole @Modo
++setmodrole @Mod
 +setmodlog #logs
 ```
 
-## Installation / Ptero
+## Ptero setup
 
-1. Egg **Node.js 18+**
-2. Variables d’environnement :
-   - `DISCORD_TOKEN` *(requis)*
-   - `PREFIX=+`
-   - `EMBED_COLOR=FFFFFF`
-   - `OWNER_IDS=ton_id`
-3. Startup : `npm install && node index.js`
-4. Persiste le dossier `data/` (SQLite)
-5. Intents Discord : **Message Content** + **Server Members**
+1. Node.js **18+** egg
+2. Env vars: `DISCORD_TOKEN`, `PREFIX=+`, `EMBED_COLOR=FFFFFF`, `OWNER_IDS=`
+3. Startup: `npm install && node index.js`
+4. Persist `data/`
+5. Intents: **Message Content** + **Server Members**
 
-## Premiers réglages
+## First commands
 
 ```text
 +help
 +setadminrole @Admin
 +setmodrole @Staff
 +setmodlog #mod-logs
-+setwelcome #accueil Bienvenue {user} sur {server} !
-+ticketsetup CATEGORY_ID #panel @Support #logs-tickets
++setwelcome #welcome Welcome {user} to {server}!
++ticketsetup CATEGORY_ID #panel @Support #ticket-logs
 +automod antilink on
 +automod antispam on
-```
-
-## Structure
-
-```text
-index.js
-config.js
-src/
-  commands/     # 1 fichier = 1 commande
-  events/
-  handlers/
-  database/
-  services/
-  utils/
-data/           # bot.db (persistant)
 ```

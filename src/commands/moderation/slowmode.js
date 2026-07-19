@@ -4,22 +4,22 @@ const { success, error } = require('../../utils/embeds');
 
 module.exports = {
   name: 'slowmode',
-  description: 'Mode lent du salon',
+  description: 'Set channel slowmode',
   category: 'moderation',
   aliases: ['slow'],
-  usage: '<durée|off>',
+  usage: '<duration|off>',
   permLevel: 'mod',
   botPermissions: [PermissionFlagsBits.ManageChannels],
   async execute(client, message, args) {
-    if (!args[0]) return message.reply({ embeds: [error('Usage : `+slowmode 5s` / `+slowmode off`')] });
+    if (!args[0]) return message.reply({ embeds: [error('Usage: `+slowmode 5s` / `+slowmode off`')] });
     if (['off', '0', 'disable'].includes(args[0].toLowerCase())) {
       await message.channel.setRateLimitPerUser(0);
-      return message.reply({ embeds: [success('Mode lent désactivé.')] });
+      return message.reply({ embeds: [success('Slowmode disabled.')] });
     }
     const duration = parseDuration(args[0]);
-    if (!duration) return message.reply({ embeds: [error('Durée invalide.')] });
+    if (!duration) return message.reply({ embeds: [error('Invalid duration.')] });
     const seconds = Math.min(Math.floor(duration / 1000), 21600);
     await message.channel.setRateLimitPerUser(seconds);
-    return message.reply({ embeds: [success(`Mode lent : **${formatDuration(seconds * 1000)}**.`)] });
+    return message.reply({ embeds: [success(`Slowmode set to **${formatDuration(seconds * 1000)}**.`)] });
   },
 };

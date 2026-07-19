@@ -12,7 +12,7 @@ async function handleAfk(client, message) {
       .send({
         embeds: [
           info(
-            `Bon retour ${message.author}. AFK retiré (durée ${formatDuration(Date.now() - self.since)}).`
+            `Welcome back ${message.author}. AFK removed (was away ${formatDuration(Date.now() - self.since)}).`
           ),
         ],
       })
@@ -27,7 +27,7 @@ async function handleAfk(client, message) {
       .send({
         embeds: [
           info(
-            `**${member.user.username}** est AFK : ${afk.reason}\nDepuis ${formatDuration(Date.now() - afk.since)}`
+            `**${member.user.username}** is AFK: ${afk.reason}\nSince ${formatDuration(Date.now() - afk.since)}`
           ),
         ],
       })
@@ -62,7 +62,7 @@ module.exports = {
     if (command.ownerOnly || command.permLevel === 'owner') {
       if (!client.config.ownerIds.includes(message.author.id)) {
         return message.reply({
-          embeds: [error('Commande réservée au propriétaire du bot.')],
+          embeds: [error('This command is owner-only.')],
         });
       }
     } else if (
@@ -76,7 +76,7 @@ module.exports = {
       return message.reply({
         embeds: [
           error(
-            `Permission insuffisante. Niveau requis : **${command.permLevel || 'user'}**.`
+            `Missing permission. Required level: **${command.permLevel || 'user'}**.`
           ),
         ],
       });
@@ -87,7 +87,7 @@ module.exports = {
       const missing = command.botPermissions.filter((p) => !me.permissions.has(p));
       if (missing.length) {
         return message.reply({
-          embeds: [error(`Permissions bot manquantes : \`${missing.join('`, `')}\``)],
+          embeds: [error(`I am missing permissions: \`${missing.join('`, `')}\``)],
         });
       }
     }
@@ -102,7 +102,7 @@ module.exports = {
       if (now < expires) {
         const left = ((expires - now) / 1000).toFixed(1);
         return message.reply({
-          embeds: [error(`Patiente encore **${left}s**.`)],
+          embeds: [error(`Please wait **${left}s**.`)],
         });
       }
     }
@@ -114,7 +114,7 @@ module.exports = {
     } catch (err) {
       console.error(`[CMD:${command.name}]`, err);
       message
-        .reply({ embeds: [error("Erreur pendant l'exécution de la commande.")] })
+        .reply({ embeds: [error('Something went wrong while running that command.')] })
         .catch(() => null);
     }
   },

@@ -22,7 +22,7 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setColor(color())
-            .setTitle('Départ')
+            .setTitle('Goodbye')
             .setDescription(text)
             .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
             .setTimestamp(),

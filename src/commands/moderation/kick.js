@@ -5,20 +5,19 @@ const { sendModLog } = require('../../utils/modlog');
 
 module.exports = {
   name: 'kick',
-  description: 'Expulse un membre',
+  description: 'Kick a member',
   category: 'moderation',
-  aliases: ['expulser'],
-  usage: '<membre> [raison]',
+  usage: '<member> [reason]',
   permLevel: 'mod',
   botPermissions: [PermissionFlagsBits.KickMembers],
   async execute(client, message, args) {
     const member = await fetchMember(message, args[0]);
-    const reason = args.slice(1).join(' ') || 'Aucune raison';
-    if (!member) return message.reply({ embeds: [error('Membre invalide.')] });
-    if (!canModerate(message.member, member)) return message.reply({ embeds: [error('Tu ne peux pas modérer ce membre.')] });
-    if (!member.kickable) return message.reply({ embeds: [error('Je ne peux pas expulser ce membre.')] });
+    const reason = args.slice(1).join(' ') || 'No reason provided';
+    if (!member) return message.reply({ embeds: [error('Invalid member.')] });
+    if (!canModerate(message.member, member)) return message.reply({ embeds: [error('You cannot moderate this member.')] });
+    if (!member.kickable) return message.reply({ embeds: [error('I cannot kick this member.')] });
     await member.kick(`${message.author.tag}: ${reason}`);
     const caseId = await sendModLog(client, message.guild, { action: 'Kick', moderator: message.author, target: member.user, reason });
-    return message.reply({ embeds: [success(`**${member.user.tag}** expulsé. Case #${caseId}\n**Raison :** ${reason}`)] });
+    return message.reply({ embeds: [success(`**${member.user.tag}** kicked. Case #${caseId}\n**Reason:** ${reason}`)] });
   },
 };

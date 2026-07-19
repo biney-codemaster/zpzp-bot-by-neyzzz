@@ -10,9 +10,9 @@ const LEVELS = {
 };
 
 /**
- * Calcule le niveau de permission custom du membre.
- * Bootstrap: Admin Discord / propriétaire serveur = admin bot
- * jusqu'à ce que les rôles custom soient configurés.
+ * Resolve a member's custom permission level.
+ * Bootstrap: Discord Admin / guild owner count as bot admin
+ * until custom roles are configured.
  */
 function getMemberLevel(member, guildData, ownerIds = []) {
   if (!member) return LEVELS.user;
@@ -40,9 +40,7 @@ function hasLevel(member, required, guildData, ownerIds = []) {
 }
 
 function levelName(level) {
-  return (
-    Object.entries(LEVELS).find(([, v]) => v === level)?.[0] || 'user'
-  );
+  return Object.entries(LEVELS).find(([, v]) => v === level)?.[0] || 'user';
 }
 
 module.exports = {

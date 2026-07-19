@@ -63,7 +63,7 @@ function formatDuration(msValue) {
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
   const parts = [];
-  if (d) parts.push(`${d}j`);
+  if (d) parts.push(`${d}d`);
   if (h) parts.push(`${h}h`);
   if (m) parts.push(`${m}m`);
   if (s || !parts.length) parts.push(`${s}s`);

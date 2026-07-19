@@ -8,7 +8,7 @@ function loadEvents(client) {
   for (const file of files) {
     const event = require(path.join(dir, file));
     if (!event?.name || typeof event.execute !== 'function') {
-      console.warn(`[EVT] Ignoré ${file}`);
+      console.warn(`[EVT] Skipped ${file}`);
       continue;
     }
 
@@ -19,7 +19,7 @@ function loadEvents(client) {
     }
   }
 
-  console.log(`[EVT] ${files.length} événements chargés`);
+  console.log(`[EVT] ${files.length} events loaded`);
 }
 
 module.exports = { loadEvents };

@@ -1,10 +1,10 @@
 const { pick } = require('../../utils/helpers');
 const { info, error } = require('../../utils/embeds');
-const answers = ['Oui.', 'Non.', 'Peut-être.', 'Sans aucun doute.', 'Très probable.', 'Réessaye plus tard.', 'Les signes disent oui.', 'Absolument pas.', 'Concentre-toi et redemande.', 'Oui, clairement.'];
+const answers = ['Yes.', 'No.', 'Maybe.', 'Without a doubt.', 'Very likely.', 'Ask again later.', 'Signs point to yes.', 'Absolutely not.', 'Concentrate and ask again.', 'Clearly yes.'];
 module.exports = {
-  name: '8ball', description: 'Boule magique', category: 'fun', aliases: ['boule'], usage: '<question>', permLevel: 'user',
+  name: '8ball', description: 'Ask the magic 8-ball', category: 'fun', aliases: ['eightball'], usage: '<question>', permLevel: 'user',
   async execute(client, message, args) {
-    if (!args.length) return message.reply({ embeds: [error('Pose une question.')] });
-    return message.reply({ embeds: [info(`Question : *${args.join(' ')}*\nRéponse : **${pick(answers)}**`)] });
+    if (!args.length) return message.reply({ embeds: [error('Ask a question.')] });
+    return message.reply({ embeds: [info(`Question: *${args.join(' ')}*\nAnswer: **${pick(answers)}**`)] });
   },
 };

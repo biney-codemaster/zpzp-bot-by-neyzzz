@@ -28,10 +28,10 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setColor(color())
-            .setTitle('Bienvenue')
+            .setTitle('Welcome')
             .setDescription(text)
             .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-            .setFooter({ text: `${member.guild.memberCount} membres` })
+            .setFooter({ text: `${member.guild.memberCount} members` })
             .setTimestamp(),
         ],
       })

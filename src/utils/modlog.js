@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { color } = require('./embeds');
+const { withEmoji } = require('./emoji');
 
 async function sendModLog(client, guild, {
   action,
@@ -34,19 +35,19 @@ async function sendModLog(client, guild, {
   const embed = new EmbedBuilder()
     .setColor(color())
     .setAuthor({
-      name: `Modération • ${action}`,
+      name: withEmoji('moderation', `Moderation • ${action}`),
       iconURL: moderator.displayAvatarURL?.({ size: 64 }) || undefined,
     })
     .addFields(
       { name: 'Case', value: `#${caseNumber}`, inline: true },
       { name: 'Action', value: action, inline: true },
-      { name: 'Modérateur', value: `${moderator} (\`${moderator.id}\`)`, inline: true },
-      { name: 'Cible', value: targetText, inline: false },
-      { name: 'Raison', value: reason || 'Aucune raison fournie' }
+      { name: 'Moderator', value: `${moderator} (\`${moderator.id}\`)`, inline: true },
+      { name: 'Target', value: targetText, inline: false },
+      { name: 'Reason', value: reason || 'No reason provided' }
     )
     .setTimestamp();
 
-  if (extra) embed.addFields({ name: 'Détails', value: String(extra).slice(0, 1024) });
+  if (extra) embed.addFields({ name: 'Details', value: String(extra).slice(0, 1024) });
 
   await channel.send({ embeds: [embed] }).catch(() => null);
   return caseNumber;

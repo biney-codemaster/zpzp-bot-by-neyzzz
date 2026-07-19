@@ -12,7 +12,7 @@ function loadCommands(client) {
     for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js'))) {
       const command = require(path.join(dir, file));
       if (!command?.name || typeof command.execute !== 'function') {
-        console.warn(`[CMD] Ignoré ${category}/${file}`);
+        console.warn(`[CMD] Skipped ${category}/${file}`);
         continue;
       }
 
@@ -27,7 +27,7 @@ function loadCommands(client) {
     }
   }
 
-  console.log(`[CMD] ${count} commandes chargées`);
+  console.log(`[CMD] ${count} commands loaded`);
 }
 
 module.exports = { loadCommands };

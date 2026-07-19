@@ -4,16 +4,16 @@ const { sendModLog } = require('../../utils/modlog');
 
 module.exports = {
   name: 'clearwarns',
-  description: 'Supprime tous les warns',
+  description: 'Clear all warnings',
   category: 'moderation',
-  usage: '<membre>',
+  usage: '<member>',
   permLevel: 'mod',
   async execute(client, message, args) {
     const member = await fetchMember(message, args[0]);
-    if (!member) return message.reply({ embeds: [error('Membre invalide.')] });
-    if (!canModerate(message.member, member)) return message.reply({ embeds: [error('Tu ne peux pas modérer ce membre.')] });
+    if (!member) return message.reply({ embeds: [error('Invalid member.')] });
+    if (!canModerate(message.member, member)) return message.reply({ embeds: [error('You cannot moderate this member.')] });
     const count = client.db.clearWarnings(message.guild.id, member.id);
-    await sendModLog(client, message.guild, { action: 'ClearWarns', moderator: message.author, target: member.user, reason: `${count} warn(s)` });
-    return message.reply({ embeds: [success(`${count} warn(s) supprimé(s) pour **${member.user.tag}**.`)] });
+    await sendModLog(client, message.guild, { action: 'ClearWarns', moderator: message.author, target: member.user, reason: `${count} warning(s)` });
+    return message.reply({ embeds: [success(`Cleared ${count} warning(s) for **${member.user.tag}**.`)] });
   },
 };

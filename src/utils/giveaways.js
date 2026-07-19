@@ -1,5 +1,16 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { color } = require('./embeds');
+const { applyComponentEmoji } = require('./emoji');
+
+function buildGiveawayComponents(ended = false) {
+  if (ended) return [];
+  const enter = new ButtonBuilder()
+    .setCustomId('giveaway_enter')
+    .setLabel('Enter')
+    .setStyle(ButtonStyle.Primary);
+  applyComponentEmoji(enter, 'enter');
+  return [new ActionRowBuilder().addComponents(enter)];
+}
 
 async function endGiveaway(client, messageId) {
   const giveaway = client.db.getGiveaway(messageId);
@@ -23,34 +34,36 @@ async function endGiveaway(client, messageId) {
 
   const embed = new EmbedBuilder()
     .setColor(color())
-    .setTitle('Giveaway terminé')
+    .setTitle('Giveaway ended')
     .setDescription(
       [
-        `**Lot :** ${giveaway.prize}`,
-        `**Gagnant(s) :** ${
+        `**Prize:** ${giveaway.prize}`,
+        `**Winner(s):** ${
           winners.length
             ? winners.map((id) => `<@${id}>`).join(', ')
-            : 'Personne (aucune participation)'
+            : 'Nobody (no entries)'
         }`,
-        `**Participants :** ${entries.length}`,
+        `**Entries:** ${entries.length}`,
       ].join('\n')
     )
-    .setFooter({ text: `Organisé par ${giveaway.host_id}` })
+    .setFooter({ text: `Hosted by ${giveaway.host_id}` })
     .setTimestamp();
 
-  if (message) await message.edit({ embeds: [embed] }).catch(() => null);
+  if (message) {
+    await message.edit({ embeds: [embed], components: [] }).catch(() => null);
+  }
 
   if (winners.length) {
     await channel
       .send(
-        `Félicitations ${winners.map((id) => `<@${id}>`).join(', ')} ! Vous gagnez **${giveaway.prize}**.`
+        `Congratulations ${winners.map((id) => `<@${id}>`).join(', ')}! You won **${giveaway.prize}**.`
       )
       .catch(() => null);
   } else {
     await channel
-      .send(`Giveaway **${giveaway.prize}** terminé sans participants.`)
+      .send(`Giveaway **${giveaway.prize}** ended with no entries.`)
       .catch(() => null);
   }
 }
 
-module.exports = { endGiveaway };
+module.exports = { endGiveaway, buildGiveawayComponents };

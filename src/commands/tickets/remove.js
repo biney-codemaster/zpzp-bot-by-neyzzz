@@ -3,14 +3,19 @@ const { fetchMember } = require('../../utils/helpers');
 const { success, error } = require('../../utils/embeds');
 
 module.exports = {
-  name: 'remove', description: 'Retire un membre du ticket', category: 'tickets', aliases: ['ticketremove'], usage: '<membre>', permLevel: 'mod',
+  name: 'remove',
+  description: 'Remove a member from the ticket',
+  category: 'tickets',
+  aliases: ['ticketremove'],
+  usage: '<member>',
+  permLevel: 'mod',
   botPermissions: [PermissionFlagsBits.ManageChannels],
   async execute(client, message, args) {
     const ticket = client.db.getTicket(message.channel.id);
-    if (!ticket || ticket.closed) return message.reply({ embeds: [error("Ce n'est pas un ticket.")] });
+    if (!ticket || ticket.closed) return message.reply({ embeds: [error('This is not a ticket.')] });
     const member = await fetchMember(message, args[0]);
-    if (!member) return message.reply({ embeds: [error('Membre introuvable.')] });
+    if (!member) return message.reply({ embeds: [error('Member not found.')] });
     await message.channel.permissionOverwrites.edit(member.id, { ViewChannel: false });
-    return message.reply({ embeds: [success(`${member} retiré.`)] });
+    return message.reply({ embeds: [success(`${member} removed.`)] });
   },
 };

@@ -6,8 +6,8 @@ module.exports = {
   name: Events.ClientReady,
   once: true,
   async execute(client) {
-    console.log(`✅ ${client.user.tag} en ligne`);
-    console.log(`📊 ${client.guilds.cache.size} serveur(s) • ${client.commands.size} commandes`);
+    console.log(`[READY] Logged in as ${client.user.tag}`);
+    console.log(`[READY] ${client.guilds.cache.size} guild(s) • ${client.commands.size} commands`);
 
     const setPresence = () => {
       client.user.setPresence({
@@ -40,7 +40,7 @@ module.exports = {
               embeds: [
                 new EmbedBuilder()
                   .setColor(color())
-                  .setTitle('Rappel')
+                  .setTitle('Reminder')
                   .setDescription(r.content)
                   .setTimestamp(),
               ],

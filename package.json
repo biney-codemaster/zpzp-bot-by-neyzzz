@@ -1,7 +1,7 @@
 {
   "name": "zpzp-bot-by-neyzzz",
-  "version": "2.0.0",
-  "description": "Bot Discord multifonctions prefix FR — SQLite — Pterodactyl",
+  "version": "2.1.0",
+  "description": "Multifunction Discord prefix bot — English — SQLite — Pterodactyl",
   "main": "index.js",
   "engines": {
     "node": ">=18.0.0"

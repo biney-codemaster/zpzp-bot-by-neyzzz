@@ -18,7 +18,7 @@ async function runAutomod(client, message) {
   if (guildData.automod_antilink && LINK_REGEX.test(message.content)) {
     await message.delete().catch(() => null);
     const warn = await message.channel
-      .send({ embeds: [error(`${message.author}, les liens ne sont pas autorisés.`)] })
+      .send({ embeds: [error(`${message.author}, links are not allowed here.`)] })
       .catch(() => null);
     if (warn) setTimeout(() => warn.delete().catch(() => null), 5000);
     return true;
@@ -35,7 +35,7 @@ async function runAutomod(client, message) {
     if (words.some((w) => w && content.includes(String(w).toLowerCase()))) {
       await message.delete().catch(() => null);
       const warn = await message.channel
-        .send({ embeds: [error(`${message.author}, mot interdit détecté.`)] })
+        .send({ embeds: [error(`${message.author}, banned word detected.`)] })
         .catch(() => null);
       if (warn) setTimeout(() => warn.delete().catch(() => null), 5000);
       return true;
@@ -54,7 +54,7 @@ async function runAutomod(client, message) {
       client.spamMap.set(key, { count: 0, last: now });
       await message.member.timeout(30_000, 'Anti-spam').catch(() => null);
       await message.channel
-        .send({ embeds: [error(`${message.author} timeout 30s (spam).`)] })
+        .send({ embeds: [error(`${message.author} timed out for 30s (spam).`)] })
         .catch(() => null);
       return true;
     }
