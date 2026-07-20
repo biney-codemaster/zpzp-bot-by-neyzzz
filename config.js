@@ -9,4 +9,10 @@ module.exports = {
     .map((id) => id.trim())
     .filter(Boolean),
   dbPath: process.env.DB_PATH || './data/bot.db',
+  tickets: {
+    /** Cooldown between opening tickets (ms) */
+    openCooldownMs: 60_000,
+    /** Delay before channel deletion after close (ms) */
+    deleteDelayMs: 5_000,
+  },
 };

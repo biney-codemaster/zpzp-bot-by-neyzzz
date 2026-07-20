@@ -49,7 +49,10 @@ class Database {
         guild_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        closed INTEGER NOT NULL DEFAULT 0
+        closed INTEGER NOT NULL DEFAULT 0,
+        closed_by TEXT,
+        close_reason TEXT,
+        closed_at INTEGER
       );
 
       CREATE TABLE IF NOT EXISTS giveaways (
@@ -93,6 +96,17 @@ class Database {
         created_at INTEGER NOT NULL
       );
     `);
+
+    this.#ensureColumn('tickets', 'closed_by', 'TEXT');
+    this.#ensureColumn('tickets', 'close_reason', 'TEXT');
+    this.#ensureColumn('tickets', 'closed_at', 'INTEGER');
+  }
+
+  #ensureColumn(table, column, type) {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!cols.includes(column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    }
   }
 
   ensureGuild(guildId) {
@@ -179,7 +193,7 @@ class Database {
   createTicket(channelId, guildId, userId) {
     this.db
       .prepare(
-        'INSERT INTO tickets (channel_id, guild_id, user_id, created_at) VALUES (?, ?, ?, ?)'
+        'INSERT INTO tickets (channel_id, guild_id, user_id, created_at, closed) VALUES (?, ?, ?, ?, 0)'
       )
       .run(channelId, guildId, userId, Date.now());
   }
@@ -196,8 +210,24 @@ class Database {
       .get(guildId, userId);
   }
 
-  closeTicket(channelId) {
-    this.db.prepare('UPDATE tickets SET closed = 1 WHERE channel_id = ?').run(channelId);
+  closeTicket(channelId, { closedBy = null, reason = null } = {}) {
+    this.db
+      .prepare(
+        `UPDATE tickets
+         SET closed = 1, closed_by = ?, close_reason = ?, closed_at = ?
+         WHERE channel_id = ?`
+      )
+      .run(closedBy, reason, Date.now(), channelId);
+  }
+
+  getLastClosedTicket(guildId, userId) {
+    return this.db
+      .prepare(
+        `SELECT * FROM tickets
+         WHERE guild_id = ? AND user_id = ? AND closed = 1
+         ORDER BY closed_at DESC LIMIT 1`
+      )
+      .get(guildId, userId);
   }
 
   createGiveaway(data) {

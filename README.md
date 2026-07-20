@@ -11,7 +11,7 @@ White embeds, custom staff permissions, interactive help menu, custom emojis via
 | Moderation | ban, kick, mute, warn, purge, lock, softban, cases… + detailed logs |
 | Automod | anti-link, anti-spam, bad words |
 | Welcome | welcome / leave / autorole |
-| Tickets | button panel, close, add/remove |
+| Tickets | panel button, staff controls, HTML transcript, logs |
 | Giveaways | gstart / gend / greroll (Enter button) |
 | Fun | 8ball, meme, cat/dog, rps… |
 | Utility | interactive help, info, poll, remind, afk, snipe… |
