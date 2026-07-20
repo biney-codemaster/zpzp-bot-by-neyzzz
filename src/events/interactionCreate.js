@@ -1,10 +1,9 @@
 const {
-  ChannelType,
-  PermissionFlagsBits,
-  EmbedBuilder,
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require('discord.js');
 const { error, success, color, info } = require('../utils/embeds');
 const {
@@ -12,8 +11,15 @@ const {
   buildCategoryEmbed,
   buildHelpComponents,
 } = require('../utils/helpMenu');
-const { hasLevel } = require('../utils/permissions');
-const { applyComponentEmoji } = require('../utils/emoji');
+const { withEmoji } = require('../utils/emoji');
+const {
+  isTicketStaff,
+  openTicket,
+  finalizeClose,
+  sendStandaloneTranscript,
+  closeConfirmComponents,
+  userSelectRow,
+} = require('../services/tickets');
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -83,6 +89,187 @@ async function handleGiveawayEnter(client, interaction) {
   });
 }
 
+async function requireTicketStaff(client, interaction) {
+  const g = client.db.ensureGuild(interaction.guild.id);
+  if (!isTicketStaff(interaction.member, g, client.config.ownerIds)) {
+    await interaction.reply({
+      embeds: [error('Only staff can use this.')],
+      ephemeral: true,
+    });
+    return false;
+  }
+  return true;
+}
+
+async function handleTicketInteractions(client, interaction) {
+  const id = interaction.customId;
+
+  // Open from panel
+  if (interaction.isButton() && id === 'ticket_open') {
+    await interaction.deferReply({ ephemeral: true });
+    return openTicket(client, interaction);
+  }
+
+  // Staff controls inside ticket
+  if (interaction.isButton() && id === 'ticket_close') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    const ticket = client.db.getTicket(interaction.channel.id);
+    if (!ticket || ticket.closed) {
+      return interaction.reply({
+        embeds: [error('This is not an open ticket.')],
+        ephemeral: true,
+      });
+    }
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setTitle(withEmoji('tickets', 'Close ticket?'))
+          .setDescription('Confirm to close, generate transcript, then delete this channel.'),
+      ],
+      components: closeConfirmComponents(),
+      ephemeral: true,
+    });
+  }
+
+  if (interaction.isButton() && id === 'ticket_close_cancel') {
+    return interaction.update({
+      embeds: [info('Close cancelled.')],
+      components: [],
+    });
+  }
+
+  if (interaction.isButton() && id === 'ticket_close_confirm') {
+    return finalizeClose(client, interaction, null);
+  }
+
+  if (interaction.isButton() && id === 'ticket_close_reason') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    const modal = new ModalBuilder()
+      .setCustomId('ticket_close_modal')
+      .setTitle('Close ticket')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('reason')
+            .setLabel('Reason (optional)')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(false)
+            .setMaxLength(500)
+        )
+      );
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && id === 'ticket_close_modal') {
+    const reason = interaction.fields.getTextInputValue('reason')?.trim() || null;
+    return finalizeClose(client, interaction, reason);
+  }
+
+  if (interaction.isButton() && id === 'ticket_transcript') {
+    return sendStandaloneTranscript(client, interaction);
+  }
+
+  if (interaction.isButton() && id === 'ticket_add') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    return interaction.reply({
+      embeds: [info('Select a user to add to this ticket.')],
+      components: [userSelectRow('ticket_add_select', 'Select user to add')],
+      ephemeral: true,
+    });
+  }
+
+  if (interaction.isButton() && id === 'ticket_remove') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    return interaction.reply({
+      embeds: [info('Select a user to remove from this ticket.')],
+      components: [userSelectRow('ticket_remove_select', 'Select user to remove')],
+      ephemeral: true,
+    });
+  }
+
+  if (interaction.isUserSelectMenu() && id === 'ticket_add_select') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    const ticket = client.db.getTicket(interaction.channel.id);
+    if (!ticket || ticket.closed) {
+      return interaction.update({
+        embeds: [error('This is not an open ticket.')],
+        components: [],
+      });
+    }
+
+    const user = interaction.users.first();
+    if (!user || user.bot) {
+      return interaction.update({
+        embeds: [error('Invalid user.')],
+        components: [],
+      });
+    }
+
+    await interaction.channel.permissionOverwrites.edit(user.id, {
+      ViewChannel: true,
+      SendMessages: true,
+      AttachFiles: true,
+      ReadMessageHistory: true,
+    });
+
+    await interaction.channel
+      .send({ embeds: [success(`${user} was added to the ticket by ${interaction.user}.`)] })
+      .catch(() => null);
+
+    return interaction.update({
+      embeds: [success(`${user} added.`)],
+      components: [],
+    });
+  }
+
+  if (interaction.isUserSelectMenu() && id === 'ticket_remove_select') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    const ticket = client.db.getTicket(interaction.channel.id);
+    if (!ticket || ticket.closed) {
+      return interaction.update({
+        embeds: [error('This is not an open ticket.')],
+        components: [],
+      });
+    }
+
+    const user = interaction.users.first();
+    if (!user) {
+      return interaction.update({
+        embeds: [error('Invalid user.')],
+        components: [],
+      });
+    }
+    if (user.id === ticket.user_id) {
+      return interaction.update({
+        embeds: [error('You cannot remove the ticket author.')],
+        components: [],
+      });
+    }
+    if (user.id === client.user.id) {
+      return interaction.update({
+        embeds: [error('You cannot remove the bot.')],
+        components: [],
+      });
+    }
+
+    await interaction.channel.permissionOverwrites.edit(user.id, {
+      ViewChannel: false,
+    });
+
+    await interaction.channel
+      .send({ embeds: [success(`${user} was removed from the ticket by ${interaction.user}.`)] })
+      .catch(() => null);
+
+    return interaction.update({
+      embeds: [success(`${user} removed.`)],
+      components: [],
+    });
+  }
+
+  return false;
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(client, interaction) {
@@ -93,153 +280,37 @@ module.exports = {
       return handleHelp(client, interaction);
     }
 
-    if (!interaction.isButton()) return;
-
-    if (interaction.customId === 'giveaway_enter') {
+    if (interaction.isButton() && interaction.customId === 'giveaway_enter') {
       return handleGiveawayEnter(client, interaction);
     }
 
-    if (interaction.customId === 'ticket_create') {
-      await interaction.deferReply({ ephemeral: true });
-      const g = client.db.ensureGuild(interaction.guild.id);
-      if (!g.ticket_category) {
-        return interaction.editReply({
-          embeds: [error('Tickets are not set up. Use `+ticketsetup`.')],
-        });
-      }
+    const ticketIds = [
+      'ticket_open',
+      'ticket_close',
+      'ticket_close_confirm',
+      'ticket_close_cancel',
+      'ticket_close_reason',
+      'ticket_close_modal',
+      'ticket_transcript',
+      'ticket_add',
+      'ticket_remove',
+      'ticket_add_select',
+      'ticket_remove_select',
+    ];
 
-      const existing = client.db.getOpenTicketByUser(
-        interaction.guild.id,
-        interaction.user.id
-      );
-      if (existing) {
-        return interaction.editReply({
-          embeds: [error(`You already have an open ticket: <#${existing.channel_id}>`)],
-        });
-      }
-
-      const overwrites = [
-        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-        {
-          id: interaction.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.AttachFiles,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        },
-        {
-          id: client.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ManageChannels,
-          ],
-        },
-      ];
-
-      if (g.ticket_support_role) {
-        overwrites.push({
-          id: g.ticket_support_role,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        });
-      }
-
-      const channel = await interaction.guild.channels.create({
-        name: `ticket-${interaction.user.username}`
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, '')
-          .slice(0, 90),
-        type: ChannelType.GuildText,
-        parent: g.ticket_category,
-        permissionOverwrites: overwrites,
-        topic: `Ticket ${interaction.user.id}`,
-      });
-
-      client.db.createTicket(channel.id, interaction.guild.id, interaction.user.id);
-
-      const closeBtn = new ButtonBuilder()
-        .setCustomId('ticket_close')
-        .setLabel('Close')
-        .setStyle(ButtonStyle.Danger);
-      applyComponentEmoji(closeBtn, 'close');
-
-      await channel.send({
-        content: g.ticket_support_role
-          ? `${interaction.user} | <@&${g.ticket_support_role}>`
-          : `${interaction.user}`,
-        embeds: [
-          new EmbedBuilder()
-            .setColor(color())
-            .setTitle('Ticket opened')
-            .setDescription('Describe your request. Close with the button or `+close`.')
-            .setTimestamp(),
-        ],
-        components: [new ActionRowBuilder().addComponents(closeBtn)],
-      });
-
-      return interaction.editReply({
-        embeds: [success(`Ticket created: ${channel}`)],
-      });
+    if (
+      (interaction.isButton() ||
+        interaction.isUserSelectMenu() ||
+        interaction.isModalSubmit()) &&
+      ticketIds.includes(interaction.customId)
+    ) {
+      return handleTicketInteractions(client, interaction);
     }
 
-    if (interaction.customId === 'ticket_close') {
-      const ticket = client.db.getTicket(interaction.channel.id);
-      if (!ticket || ticket.closed) {
-        return interaction.reply({
-          embeds: [error('This is not an open ticket.')],
-          ephemeral: true,
-        });
-      }
-
-      const g = client.db.ensureGuild(interaction.guild.id);
-      const allowed =
-        hasLevel(interaction.member, 'mod', g, client.config.ownerIds) ||
-        (g.ticket_support_role &&
-          interaction.member.roles.cache.has(g.ticket_support_role)) ||
-        ticket.user_id === interaction.user.id;
-
-      if (!allowed) {
-        return interaction.reply({
-          embeds: [error('You cannot close this ticket.')],
-          ephemeral: true,
-        });
-      }
-
-      await interaction.reply({
-        embeds: [success('Closing in 5 seconds...')],
-      });
-      client.db.closeTicket(interaction.channel.id);
-
-      if (g.ticket_log) {
-        const log = interaction.guild.channels.cache.get(g.ticket_log);
-        if (log) {
-          await log
-            .send({
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(color())
-                  .setTitle('Ticket closed')
-                  .addFields(
-                    { name: 'Channel', value: interaction.channel.name, inline: true },
-                    { name: 'Author', value: `<@${ticket.user_id}>`, inline: true },
-                    { name: 'Closed by', value: `${interaction.user}`, inline: true }
-                  )
-                  .setTimestamp(),
-              ],
-            })
-            .catch(() => null);
-        }
-      }
-
-      setTimeout(() => {
-        interaction.channel.delete('Ticket closed').catch(() => null);
-      }, 5000);
+    // Legacy panel button id support
+    if (interaction.isButton() && interaction.customId === 'ticket_create') {
+      await interaction.deferReply({ ephemeral: true });
+      return openTicket(client, interaction);
     }
   },
 };
