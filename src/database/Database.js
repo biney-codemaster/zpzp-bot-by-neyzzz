@@ -95,6 +95,18 @@ class Database {
         extra TEXT,
         created_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS polls (
+        message_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        guild_id TEXT NOT NULL,
+        author_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        options TEXT NOT NULL,
+        votes TEXT NOT NULL DEFAULT '{}',
+        ended INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
     `);
 
     this.#ensureColumn('tickets', 'closed_by', 'TEXT');
@@ -310,8 +322,72 @@ class Database {
       .all(Date.now());
   }
 
+  getUserReminders(guildId, userId) {
+    return this.db
+      .prepare(
+        `SELECT * FROM reminders
+         WHERE guild_id = ? AND user_id = ? AND sent = 0
+         ORDER BY ends_at ASC`
+      )
+      .all(guildId, userId);
+  }
+
+  getReminder(id) {
+    return this.db.prepare('SELECT * FROM reminders WHERE id = ?').get(id);
+  }
+
+  cancelReminder(id, userId) {
+    return this.db
+      .prepare(
+        'DELETE FROM reminders WHERE id = ? AND user_id = ? AND sent = 0'
+      )
+      .run(id, userId).changes;
+  }
+
   markReminderSent(id) {
     this.db.prepare('UPDATE reminders SET sent = 1 WHERE id = ?').run(id);
+  }
+
+  createPoll(data) {
+    this.db
+      .prepare(
+        `INSERT INTO polls
+         (message_id, channel_id, guild_id, author_id, question, options, votes, ended, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, '{}', 0, ?)`
+      )
+      .run(
+        data.messageId,
+        data.channelId,
+        data.guildId,
+        data.authorId,
+        data.question,
+        JSON.stringify(data.options),
+        Date.now()
+      );
+  }
+
+  getPoll(messageId) {
+    const row = this.db
+      .prepare('SELECT * FROM polls WHERE message_id = ?')
+      .get(messageId);
+    if (!row) return null;
+    return {
+      ...row,
+      options: JSON.parse(row.options || '[]'),
+      votes: JSON.parse(row.votes || '{}'),
+    };
+  }
+
+  updatePoll(messageId, data) {
+    const payload = { ...data };
+    if (payload.options) payload.options = JSON.stringify(payload.options);
+    if (payload.votes) payload.votes = JSON.stringify(payload.votes);
+    const keys = Object.keys(payload);
+    if (!keys.length) return;
+    const sets = keys.map((k) => `${k} = ?`).join(', ');
+    this.db
+      .prepare(`UPDATE polls SET ${sets} WHERE message_id = ?`)
+      .run(...keys.map((k) => payload[k]), messageId);
   }
 }
 

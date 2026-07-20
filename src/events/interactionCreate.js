@@ -32,6 +32,7 @@ const {
   assertOwner,
 } = require('../services/ticketSetup');
 const { hasLevel } = require('../utils/permissions');
+const { handlePollVote, handlePollEnd } = require('../services/polls');
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -494,6 +495,14 @@ module.exports = {
 
     if (interaction.isButton() && interaction.customId === 'giveaway_enter') {
       return handleGiveawayEnter(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('poll_vote:')) {
+      return handlePollVote(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('poll_end:')) {
+      return handlePollEnd(client, interaction);
     }
 
     const ticketIds = [
