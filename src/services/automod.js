@@ -1,8 +1,11 @@
 const { PermissionFlagsBits } = require('discord.js');
 const { error } = require('../utils/embeds');
 const { hasLevel } = require('../utils/permissions');
+const { sendModLog } = require('../utils/modlog');
 
-const LINK_REGEX = /https?:\/\/|discord\.gg\/|discord\.com\/invite\//i;
+/** Matches http(s), www, discord invites, and domain.tld style URLs */
+const LINK_REGEX =
+  /(?:https?:\/\/|www\.|discord\.gg\/|discord(?:app)?\.com\/invite\/|\b[a-z0-9][a-z0-9-]*\.[a-z]{2,}(?:\/[^\s]*)?)/i;
 
 async function runAutomod(client, message) {
   if (!message.guild || message.author.bot) return false;
@@ -52,7 +55,16 @@ async function runAutomod(client, message) {
 
     if (data.count >= 6) {
       client.spamMap.set(key, { count: 0, last: now });
-      await message.member.timeout(30_000, 'Anti-spam').catch(() => null);
+      const reason = 'Anti-spam (6+ messages in 5s)';
+      await message.member.timeout(30_000, reason).catch(() => null);
+      await sendModLog(client, message.guild, {
+        action: 'Auto-Mute',
+        moderator: client.user,
+        target: message.author,
+        reason,
+        duration: '30s',
+        extra: 'Automod anti-spam',
+      });
       await message.channel
         .send({ embeds: [error(`${message.author} timed out for 30s (spam).`)] })
         .catch(() => null);
@@ -63,4 +75,4 @@ async function runAutomod(client, message) {
   return false;
 }
 
-module.exports = { runAutomod };
+module.exports = { runAutomod, LINK_REGEX };

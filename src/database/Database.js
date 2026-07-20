@@ -100,6 +100,10 @@ class Database {
     this.#ensureColumn('tickets', 'closed_by', 'TEXT');
     this.#ensureColumn('tickets', 'close_reason', 'TEXT');
     this.#ensureColumn('tickets', 'closed_at', 'INTEGER');
+    this.#ensureColumn('guilds', 'warn_auto_mute', 'INTEGER');
+    this.#ensureColumn('guilds', 'warn_auto_kick', 'INTEGER');
+    this.#ensureColumn('guilds', 'warn_auto_ban', 'INTEGER');
+    this.#ensureColumn('guilds', 'warn_auto_mute_duration', 'TEXT');
   }
 
   #ensureColumn(table, column, type) {
@@ -188,6 +192,32 @@ class Database {
          ORDER BY created_at DESC LIMIT ?`
       )
       .all(guildId, userId, limit);
+  }
+
+  getModCase(guildId, caseId) {
+    return this.db
+      .prepare('SELECT * FROM mod_cases WHERE guild_id = ? AND id = ?')
+      .get(guildId, caseId);
+  }
+
+  getRecentModCases(guildId, limit = 10) {
+    return this.db
+      .prepare(
+        `SELECT * FROM mod_cases WHERE guild_id = ?
+         ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(guildId, limit);
+  }
+
+  getWarnThresholds(guildId) {
+    const g = this.ensureGuild(guildId);
+    const defaults = config.moderation || {};
+    return {
+      mute: g.warn_auto_mute ?? defaults.defaultWarnMute ?? 0,
+      kick: g.warn_auto_kick ?? defaults.defaultWarnKick ?? 0,
+      ban: g.warn_auto_ban ?? defaults.defaultWarnBan ?? 0,
+      muteDuration: g.warn_auto_mute_duration || defaults.autoMuteDuration || '1h',
+    };
   }
 
   createTicket(channelId, guildId, userId) {
