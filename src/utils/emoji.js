@@ -25,6 +25,15 @@ const emojis = {
   enter: null,
   yes: null,
   no: null,
+
+  // Tickets
+  ticketOpen: null,
+  ticketClose: null,
+  ticketAdd: null,
+  ticketRemove: null,
+  ticketTranscript: null,
+  ticketConfirm: null,
+  ticketCancel: null,
 };
 
 /**
