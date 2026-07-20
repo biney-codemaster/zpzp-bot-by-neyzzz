@@ -14,7 +14,7 @@ White embeds, custom staff permissions, interactive help menu, custom emojis via
 | Tickets | panel button, staff controls, HTML transcript, logs |
 | Giveaways | gstart / gend / greroll (Enter button) |
 | Fun | 8ball, meme, cat/dog, rps… |
-| Utility | interactive help, info, poll, remind, afk, snipe… |
+| Utility | interactive help, enriched info, button polls, reminders, translate, weather… |
 | Config | prefix, staff roles, modlog, automod… |
 
 **Not included:** economy, levels, suggestions, music.
