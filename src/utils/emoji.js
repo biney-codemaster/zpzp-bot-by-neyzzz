@@ -31,7 +31,6 @@ const emojis = {
   ticketClose: null,
   ticketAdd: null,
   ticketRemove: null,
-  ticketTranscript: null,
   ticketConfirm: null,
   ticketCancel: null,
 };

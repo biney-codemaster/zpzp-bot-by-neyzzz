@@ -190,7 +190,6 @@ async function postPanel(guild, channel, guildData) {
           [
             'Need help? Open a private support ticket.',
             '',
-            'One open ticket per user.',
             'Staff will respond as soon as possible.',
           ].join('\n')
         )

@@ -62,13 +62,7 @@ function ticketControls() {
     .setStyle(ButtonStyle.Secondary);
   applyComponentEmoji(remove, 'ticketRemove');
 
-  const transcript = new ButtonBuilder()
-    .setCustomId('ticket_transcript')
-    .setLabel('Transcript')
-    .setStyle(ButtonStyle.Secondary);
-  applyComponentEmoji(transcript, 'ticketTranscript');
-
-  return [new ActionRowBuilder().addComponents(close, add, remove, transcript)];
+  return [new ActionRowBuilder().addComponents(close, add, remove)];
 }
 
 function closeConfirmComponents() {
@@ -319,42 +313,6 @@ async function finalizeClose(client, interaction, reason = null) {
   }, config.tickets.deleteDelayMs);
 }
 
-async function sendStandaloneTranscript(client, interaction) {
-  const ticket = client.db.getTicket(interaction.channel.id);
-  if (!ticket) {
-    return interaction.reply({
-      embeds: [error('This is not a ticket channel.')],
-      ephemeral: true,
-    });
-  }
-
-  const g = client.db.ensureGuild(interaction.guild.id);
-  if (!isTicketStaff(interaction.member, g, client.config.ownerIds)) {
-    return interaction.reply({
-      embeds: [error('Only staff can generate transcripts.')],
-      ephemeral: true,
-    });
-  }
-
-  await interaction.deferReply({ ephemeral: true });
-  try {
-    const file = await buildTranscript(interaction.channel, {
-      ticket,
-      closedBy: interaction.user,
-      reason: 'Manual transcript',
-    });
-    return interaction.editReply({
-      embeds: [success('Transcript generated.')],
-      files: [file],
-    });
-  } catch (err) {
-    console.error('[transcript]', err);
-    return interaction.editReply({
-      embeds: [error('Failed to generate transcript.')],
-    });
-  }
-}
-
 function userSelectRow(customId, placeholder) {
   return new ActionRowBuilder().addComponents(
     new UserSelectMenuBuilder()
@@ -372,7 +330,6 @@ module.exports = {
   closeConfirmComponents,
   openTicket,
   finalizeClose,
-  sendStandaloneTranscript,
   sendTicketLog,
   userSelectRow,
 };

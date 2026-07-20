@@ -16,7 +16,6 @@ const {
   isTicketStaff,
   openTicket,
   finalizeClose,
-  sendStandaloneTranscript,
   closeConfirmComponents,
   userSelectRow,
 } = require('../services/tickets');
@@ -176,10 +175,6 @@ async function handleTicketInteractions(client, interaction) {
   if (interaction.isModalSubmit() && id === 'ticket_close_modal') {
     const reason = interaction.fields.getTextInputValue('reason')?.trim() || null;
     return finalizeClose(client, interaction, reason);
-  }
-
-  if (interaction.isButton() && id === 'ticket_transcript') {
-    return sendStandaloneTranscript(client, interaction);
   }
 
   if (interaction.isButton() && id === 'ticket_add') {
@@ -503,7 +498,6 @@ module.exports = {
       'ticket_close_cancel',
       'ticket_close_reason',
       'ticket_close_modal',
-      'ticket_transcript',
       'ticket_add',
       'ticket_remove',
       'ticket_add_select',
