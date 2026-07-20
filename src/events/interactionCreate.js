@@ -20,6 +20,18 @@ const {
   closeConfirmComponents,
   userSelectRow,
 } = require('../services/tickets');
+const {
+  buildSetupEmbed,
+  mainMenu,
+  categoryPicker,
+  supportPicker,
+  logsPicker,
+  panelPicker,
+  pickerEmbed,
+  postPanel,
+  assertOwner,
+} = require('../services/ticketSetup');
+const { hasLevel } = require('../utils/permissions');
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -270,6 +282,196 @@ async function handleTicketInteractions(client, interaction) {
   return false;
 }
 
+async function handleTicketSetup(client, interaction) {
+  const [action, ownerId] = interaction.customId.split(':');
+  if (!assertOwner(interaction, ownerId)) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use this menu.')],
+      ephemeral: true,
+    });
+  }
+
+  const guildData = client.db.ensureGuild(interaction.guild.id);
+  if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+    return interaction.reply({
+      embeds: [error('Admin permission required.')],
+      ephemeral: true,
+    });
+  }
+
+  if (action === 'tsetup_close') {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Ticket setup closed. Run `+ticketsetup` to open it again.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'tsetup_back') {
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildSetupEmbed(interaction.guild, data)],
+      components: mainMenu(ownerId),
+    });
+  }
+
+  if (action === 'tsetup_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+
+    if (choice === 'category') {
+      return interaction.update({
+        embeds: [
+          pickerEmbed(
+            'Select category',
+            'Choose the category where ticket channels will be created.'
+          ),
+        ],
+        components: categoryPicker(ownerId),
+      });
+    }
+
+    if (choice === 'support') {
+      return interaction.update({
+        embeds: [
+          pickerEmbed(
+            'Select support role',
+            'Choose the role that can see and manage tickets.'
+          ),
+        ],
+        components: supportPicker(ownerId),
+      });
+    }
+
+    if (choice === 'logs') {
+      return interaction.update({
+        embeds: [
+          pickerEmbed(
+            'Select log channel',
+            'Choose where open / close / delete logs are sent.'
+          ),
+        ],
+        components: logsPicker(ownerId),
+      });
+    }
+
+    if (choice === 'clear_logs') {
+      client.db.updateGuild(interaction.guild.id, { ticket_log: null });
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildSetupEmbed(interaction.guild, data)],
+        components: mainMenu(ownerId),
+      });
+    }
+
+    if (choice === 'panel') {
+      const data = client.db.ensureGuild(interaction.guild.id);
+      if (!data.ticket_category || !data.ticket_support_role) {
+        return interaction.reply({
+          embeds: [
+            error(
+              'Set **Category** and **Support role** before posting the panel.'
+            ),
+          ],
+          ephemeral: true,
+        });
+      }
+
+      return interaction.update({
+        embeds: [
+          pickerEmbed(
+            'Post panel',
+            'Choose the channel where the public ticket panel will be posted.'
+          ),
+        ],
+        components: panelPicker(ownerId),
+      });
+    }
+  }
+
+  if (action === 'tsetup_category' && interaction.isChannelSelectMenu()) {
+    const channel = interaction.channels.first();
+    client.db.updateGuild(interaction.guild.id, {
+      ticket_category: channel.id,
+    });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildSetupEmbed(interaction.guild, data)],
+      components: mainMenu(ownerId),
+    });
+  }
+
+  if (action === 'tsetup_support' && interaction.isRoleSelectMenu()) {
+    const role = interaction.roles.first();
+    client.db.updateGuild(interaction.guild.id, {
+      ticket_support_role: role.id,
+    });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildSetupEmbed(interaction.guild, data)],
+      components: mainMenu(ownerId),
+    });
+  }
+
+  if (action === 'tsetup_logs' && interaction.isChannelSelectMenu()) {
+    const channel = interaction.channels.first();
+    client.db.updateGuild(interaction.guild.id, {
+      ticket_log: channel.id,
+    });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildSetupEmbed(interaction.guild, data)],
+      components: mainMenu(ownerId),
+    });
+  }
+
+  if (action === 'tsetup_panel' && interaction.isChannelSelectMenu()) {
+    const channel = interaction.channels.first();
+    const data = client.db.ensureGuild(interaction.guild.id);
+
+    if (!data.ticket_category || !data.ticket_support_role) {
+      return interaction.update({
+        embeds: [buildSetupEmbed(interaction.guild, data)],
+        components: mainMenu(ownerId),
+      }).then(() =>
+        interaction.followUp({
+          embeds: [
+            error('Set **Category** and **Support role** before posting the panel.'),
+          ],
+          ephemeral: true,
+        })
+      );
+    }
+
+    try {
+      await postPanel(interaction.guild, channel, data);
+    } catch (err) {
+      console.error('[ticketsetup:panel]', err);
+      return interaction.update({
+        embeds: [buildSetupEmbed(interaction.guild, data)],
+        components: mainMenu(ownerId),
+      }).then(() =>
+        interaction.followUp({
+          embeds: [error('Failed to post the panel. Check my permissions in that channel.')],
+          ephemeral: true,
+        })
+      );
+    }
+
+    await interaction.update({
+      embeds: [buildSetupEmbed(interaction.guild, data)],
+      components: mainMenu(ownerId),
+    });
+
+    return interaction.followUp({
+      embeds: [success(`Panel posted in ${channel}.`)],
+      ephemeral: true,
+    });
+  }
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(client, interaction) {
@@ -278,6 +480,16 @@ module.exports = {
       interaction.customId.startsWith('help_')
     ) {
       return handleHelp(client, interaction);
+    }
+
+    if (
+      (interaction.isStringSelectMenu() ||
+        interaction.isChannelSelectMenu() ||
+        interaction.isRoleSelectMenu() ||
+        interaction.isButton()) &&
+      interaction.customId.startsWith('tsetup_')
+    ) {
+      return handleTicketSetup(client, interaction);
     }
 
     if (interaction.isButton() && interaction.customId === 'giveaway_enter') {
