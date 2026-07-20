@@ -15,4 +15,14 @@ module.exports = {
     /** Delay before channel deletion after close (ms) */
     deleteDelayMs: 5_000,
   },
+  moderation: {
+    /** Default warn count before auto-mute (0 = disabled) */
+    defaultWarnMute: 3,
+    /** Default warn count before auto-kick (0 = disabled) */
+    defaultWarnKick: 5,
+    /** Default warn count before auto-ban (0 = disabled) */
+    defaultWarnBan: 7,
+    /** Duration for auto-mute sanctions */
+    autoMuteDuration: '1h',
+  },
 };
