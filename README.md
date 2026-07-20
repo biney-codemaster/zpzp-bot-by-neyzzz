@@ -61,7 +61,7 @@ Use Discord custom emoji format `<:name:id>` / `<a:name:id>`, or leave `null`.
 +setmodrole @Staff
 +setmodlog #mod-logs
 +setwelcome #welcome Welcome {user} to {server}!
-+ticketsetup CATEGORY_ID #panel @Support #ticket-logs
++ticketsetup
 +automod antilink on
 +automod antispam on
 ```
