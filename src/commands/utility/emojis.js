@@ -18,11 +18,27 @@ module.exports = {
     const animated = emojis.filter((e) => e.animated);
     const staticE = emojis.filter((e) => !e.animated);
 
-    const format = (list) =>
-      list.map((e) => `${e} \`:${e.name}:\``).join(' ').slice(0, 3800) || 'None';
+    const format = (list) => {
+      const lines = list.map((e) => `${e} \`:${e.name}:\``);
+      let out = '';
+      let shown = 0;
+      for (const line of lines) {
+        const next = out ? `${out}\n${line}` : line;
+        if (next.length > 1800) break;
+        out = next;
+        shown += 1;
+      }
+      if (!shown) return 'None';
+      if (shown < list.length) {
+        out += `\n…(+${list.length - shown} more)`;
+      }
+      return out;
+    };
 
     const parts = [];
-    if (staticE.length) parts.push(`**Static (${staticE.length})**\n${format(staticE)}`);
+    if (staticE.length) {
+      parts.push(`**Static (${staticE.length})**\n${format(staticE)}`);
+    }
     if (animated.length) {
       parts.push(`**Animated (${animated.length})**\n${format(animated)}`);
     }
