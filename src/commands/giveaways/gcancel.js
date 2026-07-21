@@ -1,10 +1,11 @@
-const { endGiveaway } = require('../../services/giveaways');
+const { cancelGiveaway } = require('../../services/giveaways');
 const { success, error } = require('../../utils/embeds');
 
 module.exports = {
-  name: 'gend',
-  description: 'End a giveaway now',
+  name: 'gcancel',
+  description: 'Cancel a giveaway without drawing winners',
   category: 'giveaways',
+  aliases: ['gabort'],
   usage: '[message_id]',
   permLevel: 'admin',
   async execute(client, message, args) {
@@ -23,11 +24,11 @@ module.exports = {
       return message.reply({ embeds: [error('Giveaway already ended or cancelled.')] });
     }
 
-    const result = await endGiveaway(client, id);
-    if (!result) {
-      return message.reply({ embeds: [error('Could not end that giveaway.')] });
+    const ok = await cancelGiveaway(client, id);
+    if (!ok) {
+      return message.reply({ embeds: [error('Could not cancel that giveaway.')] });
     }
 
-    return message.reply({ embeds: [success('Giveaway ended.')] });
+    return message.reply({ embeds: [success('Giveaway cancelled.')] });
   },
 };

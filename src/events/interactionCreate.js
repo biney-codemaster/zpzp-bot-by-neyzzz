@@ -33,6 +33,24 @@ const {
 } = require('../services/ticketSetup');
 const { hasLevel } = require('../utils/permissions');
 const { handlePollVote, handlePollEnd } = require('../services/polls');
+const {
+  parseEntryMap,
+  entryStats,
+  checkEligibility,
+  entryWeight,
+  refreshGiveawayMessage,
+  getGiveawaySettings,
+} = require('../services/giveaways');
+const {
+  buildSetupEmbed: buildGiveawaySetupEmbed,
+  mainMenu: giveawayMainMenu,
+  backRow: giveawayBackRow,
+  rolePicker: giveawayRolePicker,
+  minAgeModal,
+  bonusEntriesModal,
+  pickerEmbed: giveawayPickerEmbed,
+  assertOwner: assertGiveawayOwner,
+} = require('../services/giveawaySetup');
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -78,28 +96,270 @@ async function handleHelp(client, interaction) {
 
 async function handleGiveawayEnter(client, interaction) {
   const giveaway = client.db.getGiveaway(interaction.message.id);
-  if (!giveaway || giveaway.ended) {
+  if (!giveaway || giveaway.ended || giveaway.cancelled) {
     return interaction.reply({
       embeds: [error('This giveaway is no longer active.')],
       ephemeral: true,
     });
   }
 
-  const entries = new Set(giveaway.entries || []);
-  if (entries.has(interaction.user.id)) {
+  const guildData = client.db.ensureGuild(interaction.guild.id);
+  const settings = getGiveawaySettings(guildData);
+  const fail = checkEligibility(interaction.member, settings);
+  if (fail) {
+    return interaction.reply({ embeds: [error(fail)], ephemeral: true });
+  }
+
+  const map = parseEntryMap(giveaway.entries);
+  if (map[interaction.user.id]) {
     return interaction.reply({
-      embeds: [info('You are already entered.')],
+      embeds: [info('You are already entered. Use **Leave** to withdraw first.')],
       ephemeral: true,
     });
   }
 
-  entries.add(interaction.user.id);
-  client.db.updateGiveaway(interaction.message.id, { entries: [...entries] });
+  map[interaction.user.id] = entryWeight(interaction.member, settings);
+  client.db.updateGiveaway(interaction.message.id, { entries: map });
+  await refreshGiveawayMessage(client, interaction.message.id);
 
+  const stats = entryStats(map);
   return interaction.reply({
-    embeds: [success(`You entered the giveaway. Entries: **${entries.size}**`)],
+    embeds: [
+      success(
+        `You entered the giveaway with **${map[interaction.user.id]}** entry/entries.\nTotal entries: **${stats.entries}** (${stats.participants} participants).`
+      ),
+    ],
     ephemeral: true,
   });
+}
+
+async function handleGiveawayLeave(client, interaction) {
+  const giveaway = client.db.getGiveaway(interaction.message.id);
+  if (!giveaway || giveaway.ended || giveaway.cancelled) {
+    return interaction.reply({
+      embeds: [error('This giveaway is no longer active.')],
+      ephemeral: true,
+    });
+  }
+
+  const map = parseEntryMap(giveaway.entries);
+  if (!map[interaction.user.id]) {
+    return interaction.reply({
+      embeds: [info('You are not entered in this giveaway.')],
+      ephemeral: true,
+    });
+  }
+
+  delete map[interaction.user.id];
+  client.db.updateGiveaway(interaction.message.id, { entries: map });
+  await refreshGiveawayMessage(client, interaction.message.id);
+
+  const stats = entryStats(map);
+  return interaction.reply({
+    embeds: [
+      success(
+        `You left the giveaway.\nTotal entries: **${stats.entries}** (${stats.participants} participants).`
+      ),
+    ],
+    ephemeral: true,
+  });
+}
+
+async function handleGiveawaySetup(client, interaction) {
+  const guildData = client.db.ensureGuild(interaction.guild.id);
+  if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+    return interaction.reply({
+      embeds: [error('Admin permission required.')],
+      ephemeral: true,
+    });
+  }
+
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'gsetup_min_age_modal') {
+      const days = Number(interaction.fields.getTextInputValue('days'));
+      if (Number.isNaN(days) || days < 0) {
+        return interaction.reply({
+          embeds: [error('Days must be a number >= 0.')],
+          ephemeral: true,
+        });
+      }
+      client.db.updateGuild(interaction.guild.id, {
+        giveaway_min_account_days: days,
+      });
+      const data = client.db.ensureGuild(interaction.guild.id);
+      await interaction.reply({
+        embeds: [success(`Minimum account age set to **${days}** day(s).`)],
+        ephemeral: true,
+      });
+      if (interaction.message?.editable) {
+        await interaction.message.edit({
+          embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
+          components: giveawayMainMenu(interaction.user.id),
+        });
+      }
+      return;
+    }
+
+    if (interaction.customId === 'gsetup_bonus_entries_modal') {
+      const amount = Number(interaction.fields.getTextInputValue('amount'));
+      if (Number.isNaN(amount) || amount < 0) {
+        return interaction.reply({
+          embeds: [error('Amount must be a number >= 0.')],
+          ephemeral: true,
+        });
+      }
+      client.db.updateGuild(interaction.guild.id, {
+        giveaway_bonus_entries: amount,
+      });
+      const data = client.db.ensureGuild(interaction.guild.id);
+      await interaction.reply({
+        embeds: [success(`Bonus entries set to **+${amount}**.`)],
+        ephemeral: true,
+      });
+      if (interaction.message?.editable) {
+        await interaction.message.edit({
+          embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
+          components: giveawayMainMenu(interaction.user.id),
+        });
+      }
+      return;
+    }
+    return;
+  }
+
+  const parts = interaction.customId.split(':');
+  const action = parts[0];
+  const ownerId =
+    action === 'gsetup_role' ? parts[2] : parts[1];
+
+  if (!assertGiveawayOwner(interaction, ownerId)) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use this menu.')],
+      ephemeral: true,
+    });
+  }
+
+  if (action === 'gsetup_close') {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Giveaway setup closed. Run `+gsetup` to open it again.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'gsetup_back') {
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
+      components: giveawayMainMenu(ownerId),
+    });
+  }
+
+  if (action === 'gsetup_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+    const data = client.db.ensureGuild(interaction.guild.id);
+
+    if (choice === 'required_role') {
+      return interaction.update({
+        embeds: [
+          giveawayPickerEmbed(
+            'Required role',
+            'Members need this role to enter giveaways.'
+          ),
+        ],
+        components: giveawayRolePicker(ownerId, 'required'),
+      });
+    }
+
+    if (choice === 'bonus_role') {
+      return interaction.update({
+        embeds: [
+          giveawayPickerEmbed(
+            'Bonus role',
+            'Members with this role receive extra entries.'
+          ),
+        ],
+        components: giveawayRolePicker(ownerId, 'bonus'),
+      });
+    }
+
+    if (choice === 'min_age') {
+      const settings = getGiveawaySettings(data);
+      return interaction.showModal(minAgeModal(settings.minAccountDays));
+    }
+
+    if (choice === 'bonus_entries') {
+      const settings = getGiveawaySettings(data);
+      return interaction.showModal(bonusEntriesModal(settings.bonusEntries));
+    }
+
+    if (choice === 'boosters') {
+      client.db.updateGuild(interaction.guild.id, {
+        giveaway_boosters_only: data.giveaway_boosters_only ? 0 : 1,
+      });
+      const updated = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
+        components: giveawayMainMenu(ownerId),
+      });
+    }
+
+    if (choice === 'ping') {
+      client.db.updateGuild(interaction.guild.id, {
+        giveaway_ping_on_end: data.giveaway_ping_on_end ? 0 : 1,
+      });
+      const updated = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
+        components: giveawayMainMenu(ownerId),
+      });
+    }
+
+    if (choice === 'clear_required') {
+      client.db.updateGuild(interaction.guild.id, {
+        giveaway_required_role: null,
+      });
+      const updated = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
+        components: giveawayMainMenu(ownerId),
+      });
+    }
+
+    if (choice === 'clear_bonus') {
+      client.db.updateGuild(interaction.guild.id, {
+        giveaway_bonus_role: null,
+        giveaway_bonus_entries: 0,
+      });
+      const updated = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
+        components: giveawayMainMenu(ownerId),
+      });
+    }
+  }
+
+  if (action === 'gsetup_role' && interaction.isRoleSelectMenu()) {
+    const field = parts[1];
+    const role = interaction.roles.first();
+    const key =
+      field === 'required'
+        ? 'giveaway_required_role'
+        : 'giveaway_bonus_role';
+    client.db.updateGuild(interaction.guild.id, { [key]: role.id });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    await interaction.update({
+      embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
+      components: giveawayMainMenu(ownerId),
+    });
+    return interaction.followUp({
+      embeds: [success(`Set ${field === 'required' ? 'required' : 'bonus'} role to ${role}.`)],
+      ephemeral: true,
+    });
+  }
 }
 
 async function requireTicketStaff(client, interaction) {
@@ -493,8 +753,24 @@ module.exports = {
       return handleTicketSetup(client, interaction);
     }
 
+    if (
+      (interaction.isStringSelectMenu() ||
+        interaction.isRoleSelectMenu() ||
+        interaction.isButton() ||
+        interaction.isModalSubmit()) &&
+      (interaction.customId.startsWith('gsetup_') ||
+        interaction.customId === 'gsetup_min_age_modal' ||
+        interaction.customId === 'gsetup_bonus_entries_modal')
+    ) {
+      return handleGiveawaySetup(client, interaction);
+    }
+
     if (interaction.isButton() && interaction.customId === 'giveaway_enter') {
       return handleGiveawayEnter(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId === 'giveaway_leave') {
+      return handleGiveawayLeave(client, interaction);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('poll_vote:')) {

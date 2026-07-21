@@ -126,6 +126,15 @@ class Database {
     this.#ensureColumn('tickets', 'closed_by', 'TEXT');
     this.#ensureColumn('tickets', 'close_reason', 'TEXT');
     this.#ensureColumn('tickets', 'closed_at', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_required_role', 'TEXT');
+    this.#ensureColumn('guilds', 'giveaway_min_account_days', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_boosters_only', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_bonus_role', 'TEXT');
+    this.#ensureColumn('guilds', 'giveaway_bonus_entries', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_ping_on_end', 'INTEGER');
+    this.#ensureColumn('giveaways', 'cancelled', 'INTEGER NOT NULL DEFAULT 0');
+    this.#ensureColumn('giveaways', 'ping_on_end', 'INTEGER');
+    this.#ensureColumn('giveaways', 'winner_ids', 'TEXT');
   }
 
   #ensureColumn(table, column, type) {
@@ -260,8 +269,8 @@ class Database {
     this.db
       .prepare(
         `INSERT INTO giveaways
-         (message_id, channel_id, guild_id, host_id, prize, winners, ends_at, ended, entries)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
+         (message_id, channel_id, guild_id, host_id, prize, winners, ends_at, ended, entries, cancelled, ping_on_end)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?)`
       )
       .run(
         data.messageId,
@@ -271,7 +280,8 @@ class Database {
         data.prize,
         data.winners,
         data.endsAt,
-        JSON.stringify(data.entries || [])
+        JSON.stringify(data.entries || {}),
+        data.pingOnEnd ? 1 : 0
       );
   }
 
@@ -280,12 +290,14 @@ class Database {
       .prepare('SELECT * FROM giveaways WHERE message_id = ?')
       .get(messageId);
     if (!row) return null;
-    return { ...row, entries: JSON.parse(row.entries || '[]') };
+    return { ...row, entries: row.entries };
   }
 
   updateGiveaway(messageId, data) {
     const payload = { ...data };
-    if (payload.entries) payload.entries = JSON.stringify(payload.entries);
+    if (payload.entries && typeof payload.entries === 'object') {
+      payload.entries = JSON.stringify(payload.entries);
+    }
     const keys = Object.keys(payload);
     const sets = keys.map((k) => `${k} = ?`).join(', ');
     this.db
@@ -295,9 +307,16 @@ class Database {
 
   getActiveGiveaways() {
     return this.db
-      .prepare('SELECT * FROM giveaways WHERE ended = 0')
-      .all()
-      .map((r) => ({ ...r, entries: JSON.parse(r.entries || '[]') }));
+      .prepare('SELECT * FROM giveaways WHERE ended = 0 AND cancelled = 0')
+      .all();
+  }
+
+  getActiveGiveawaysByGuild(guildId) {
+    return this.db
+      .prepare(
+        'SELECT * FROM giveaways WHERE guild_id = ? AND ended = 0 AND cancelled = 0 ORDER BY ends_at ASC'
+      )
+      .all(guildId);
   }
 
   setAfk(guildId, userId, reason) {
