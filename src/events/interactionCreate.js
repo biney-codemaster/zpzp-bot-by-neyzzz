@@ -31,6 +31,7 @@ const {
   postPanel,
   assertOwner,
 } = require('../services/ticketSetup');
+const { hasLevel } = require('../utils/permissions');
 const { parseDuration } = require('../utils/helpers');
 const { handlePollVote, handlePollEnd } = require('../services/polls');
 const {
@@ -41,6 +42,16 @@ const {
   refreshGiveawayMessage,
   getGiveawaySettings,
 } = require('../services/giveaways');
+const {
+  getTttGame,
+  setTttGame,
+  clearTttGame,
+  renderBoard,
+  buildTttComponents,
+  buildTttEmbed,
+  checkTttWinner,
+  botMove,
+} = require('../services/funGames');
 const {
   buildCreateEmbed: buildGiveawayCreateEmbed,
   mainMenu: giveawayCreateMenu,
@@ -60,6 +71,291 @@ const {
   defaultDraft,
   postGiveaway,
 } = require('../services/giveawayCreate');
+
+async function handleTtt(client, interaction) {
+  if (!interaction.isButton()) return;
+  if (!interaction.guild) return;
+
+  const id = interaction.customId;
+  if (
+    id !== 'ttt_accept' &&
+    id !== 'ttt_decline' &&
+    id !== 'ttt_quit' &&
+    !id.startsWith('ttt_cell:')
+  ) {
+    return;
+  }
+
+  const guildId = interaction.guild.id;
+  const channelId = interaction.channel.id;
+  const game = getTttGame(client, guildId, channelId);
+
+  if (!game) {
+    return interaction.reply({
+      embeds: [error('No active tic-tac-toe game here.')],
+      ephemeral: true,
+    });
+  }
+
+  if (game.messageId && game.messageId !== interaction.message.id) {
+    return interaction.reply({
+      embeds: [error('This board is outdated. Use the latest game message.')],
+      ephemeral: true,
+    });
+  }
+
+  if (id === 'ttt_decline') {
+    if (
+      interaction.user.id !== game.opponentId &&
+      interaction.user.id !== game.challengerId
+    ) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can decline.')],
+        ephemeral: true,
+      });
+    }
+    clearTttGame(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildTttEmbed({
+          title: 'Tic-Tac-Toe',
+          description: 'Challenge declined.',
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id === 'ttt_accept') {
+    if (game.mode !== 'pvp' || game.status !== 'pending') {
+      return interaction.reply({
+        embeds: [error('No pending challenge.')],
+        ephemeral: true,
+      });
+    }
+    if (interaction.user.id !== game.opponentId) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can accept.')],
+        ephemeral: true,
+      });
+    }
+    game.status = 'active';
+    game.turn = game.challengerId;
+    setTttGame(client, guildId, channelId, game);
+    return interaction.update({
+      embeds: [
+        buildTttEmbed({
+          title: 'Tic-Tac-Toe',
+          description: [
+            `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+            renderBoard(game.board),
+            '',
+            `<@${game.turn}> goes first. Click a cell.`,
+          ].join('\n'),
+        }),
+      ],
+      components: buildTttComponents(game.board),
+    });
+  }
+
+  if (id === 'ttt_quit') {
+    const canQuit =
+      (game.mode === 'bot' && interaction.user.id === game.playerId) ||
+      (game.mode === 'pvp' &&
+        (interaction.user.id === game.challengerId ||
+          interaction.user.id === game.opponentId));
+    if (!canQuit) {
+      return interaction.reply({
+        embeds: [error('Only players can quit this game.')],
+        ephemeral: true,
+      });
+    }
+    clearTttGame(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildTttEmbed({
+          title: 'Tic-Tac-Toe',
+          description: `${interaction.user} ended the game.`,
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id.startsWith('ttt_cell:')) {
+    if (game.status !== 'active') {
+      return interaction.reply({
+        embeds: [error('This game is not active yet.')],
+        ephemeral: true,
+      });
+    }
+
+    const idx = Number(id.split(':')[1]);
+    if (Number.isNaN(idx) || idx < 0 || idx > 8) {
+      return interaction.reply({
+        embeds: [error('Invalid cell.')],
+        ephemeral: true,
+      });
+    }
+    if (game.board[idx]) {
+      return interaction.reply({
+        embeds: [error('That cell is already taken.')],
+        ephemeral: true,
+      });
+    }
+
+    if (game.mode === 'bot') {
+      if (interaction.user.id !== game.playerId) {
+        return interaction.reply({
+          embeds: [error('This is not your game.')],
+          ephemeral: true,
+        });
+      }
+
+      game.board[idx] = 'X';
+      let result = checkTttWinner(game.board);
+      if (result === 'X') {
+        clearTttGame(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'ttt_wins');
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — You win',
+              description: [renderBoard(game.board), '', 'You win!'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+      if (result === 'tie') {
+        clearTttGame(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Draw',
+              description: [renderBoard(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      const botIdx = botMove(game.board, 'O', 'X');
+      if (botIdx >= 0) game.board[botIdx] = 'O';
+      result = checkTttWinner(game.board);
+
+      if (result === 'O') {
+        clearTttGame(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'ttt_losses');
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Bot wins',
+              description: [renderBoard(game.board), '', 'Bot wins.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+      if (result === 'tie') {
+        clearTttGame(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Draw',
+              description: [renderBoard(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      setTttGame(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildTttEmbed({
+            title: 'Tic-Tac-Toe',
+            description: [
+              'You are **X**, bot is **O**.',
+              renderBoard(game.board),
+              '',
+              'Your turn. Click a cell.',
+            ].join('\n'),
+            footer: `${interaction.user.tag}'s turn`,
+          }),
+        ],
+        components: buildTttComponents(game.board),
+      });
+    }
+
+    if (game.mode === 'pvp') {
+      if (interaction.user.id !== game.turn) {
+        return interaction.reply({
+          embeds: [error('It is not your turn.')],
+          ephemeral: true,
+        });
+      }
+
+      const mark = game.marks[interaction.user.id];
+      game.board[idx] = mark;
+      const result = checkTttWinner(game.board);
+
+      if (result === mark) {
+        clearTttGame(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'ttt_wins');
+        const loserId =
+          interaction.user.id === game.challengerId
+            ? game.opponentId
+            : game.challengerId;
+        client.db.addFunStat(guildId, loserId, 'ttt_losses');
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Winner',
+              description: [
+                renderBoard(game.board),
+                '',
+                `${interaction.user} wins!`,
+              ].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      if (result === 'tie') {
+        clearTttGame(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Draw',
+              description: [renderBoard(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      game.turn =
+        game.turn === game.challengerId ? game.opponentId : game.challengerId;
+      setTttGame(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildTttEmbed({
+            title: 'Tic-Tac-Toe',
+            description: [
+              `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+              renderBoard(game.board),
+              '',
+              `<@${game.turn}>'s turn. Click a cell.`,
+            ].join('\n'),
+          }),
+        ],
+        components: buildTttComponents(game.board),
+      });
+    }
+  }
+}
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -904,6 +1200,16 @@ module.exports = {
 
     if (interaction.isButton() && interaction.customId === 'giveaway_leave') {
       return handleGiveawayLeave(client, interaction);
+    }
+
+    if (
+      interaction.isButton() &&
+      (interaction.customId.startsWith('ttt_') ||
+        interaction.customId === 'ttt_accept' ||
+        interaction.customId === 'ttt_decline' ||
+        interaction.customId === 'ttt_quit')
+    ) {
+      return handleTtt(client, interaction);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('poll_vote:')) {

@@ -113,12 +113,82 @@ function emptyBoard() {
 }
 
 function renderBoard(board) {
-  const cell = (i) => board[i] || String(i + 1);
+  const cell = (i) => board[i] || '-';
   return [
     `\`${cell(0)} | ${cell(1)} | ${cell(2)}\``,
     `\`${cell(3)} | ${cell(4)} | ${cell(5)}\``,
     `\`${cell(6)} | ${cell(7)} | ${cell(8)}\``,
   ].join('\n');
+}
+
+function buildTttComponents(board, { ended = false, pending = false } = {}) {
+  const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+  } = require('discord.js');
+  const { applyComponentEmoji } = require('../utils/emoji');
+
+  if (pending) {
+    const accept = new ButtonBuilder()
+      .setCustomId('ttt_accept')
+      .setLabel('Accept')
+      .setStyle(ButtonStyle.Success);
+    applyComponentEmoji(accept, 'yes');
+    const decline = new ButtonBuilder()
+      .setCustomId('ttt_decline')
+      .setLabel('Decline')
+      .setStyle(ButtonStyle.Danger);
+    applyComponentEmoji(decline, 'no');
+    return [new ActionRowBuilder().addComponents(accept, decline)];
+  }
+
+  const rows = [];
+  for (let r = 0; r < 3; r += 1) {
+    const row = new ActionRowBuilder();
+    for (let c = 0; c < 3; c += 1) {
+      const i = r * 3 + c;
+      const mark = board[i];
+      let style = ButtonStyle.Secondary;
+      let label = '-';
+      if (mark === 'X') {
+        label = 'X';
+        style = ButtonStyle.Primary;
+      } else if (mark === 'O') {
+        label = 'O';
+        style = ButtonStyle.Danger;
+      }
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`ttt_cell:${i}`)
+          .setLabel(label)
+          .setStyle(style)
+          .setDisabled(ended || Boolean(mark))
+      );
+    }
+    rows.push(row);
+  }
+
+  const quit = new ButtonBuilder()
+    .setCustomId('ttt_quit')
+    .setLabel('Quit')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(ended);
+  applyComponentEmoji(quit, 'close');
+  rows.push(new ActionRowBuilder().addComponents(quit));
+  return rows;
+}
+
+function buildTttEmbed({ title, description, footer }) {
+  const { EmbedBuilder } = require('discord.js');
+  const { color } = require('../utils/embeds');
+  const embed = new EmbedBuilder()
+    .setColor(color())
+    .setTitle(title || 'Tic-Tac-Toe')
+    .setDescription(description)
+    .setTimestamp();
+  if (footer) embed.setFooter({ text: footer });
+  return embed;
 }
 
 function checkTttWinner(board) {
@@ -195,6 +265,8 @@ module.exports = {
   clearTttGame,
   emptyBoard,
   renderBoard,
+  buildTttComponents,
+  buildTttEmbed,
   checkTttWinner,
   botMove,
   answersMatch,
