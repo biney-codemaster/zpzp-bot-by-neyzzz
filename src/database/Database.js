@@ -107,6 +107,20 @@ class Database {
         ended INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS fun_stats (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        rps_wins INTEGER NOT NULL DEFAULT 0,
+        rps_losses INTEGER NOT NULL DEFAULT 0,
+        rps_ties INTEGER NOT NULL DEFAULT 0,
+        trivia_correct INTEGER NOT NULL DEFAULT 0,
+        trivia_wrong INTEGER NOT NULL DEFAULT 0,
+        ttt_wins INTEGER NOT NULL DEFAULT 0,
+        ttt_losses INTEGER NOT NULL DEFAULT 0,
+        hangman_wins INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (guild_id, user_id)
+      );
     `);
 
     this.#ensureColumn('tickets', 'closed_by', 'TEXT');
@@ -388,6 +402,52 @@ class Database {
     this.db
       .prepare(`UPDATE polls SET ${sets} WHERE message_id = ?`)
       .run(...keys.map((k) => payload[k]), messageId);
+  }
+
+  ensureFunStats(guildId, userId) {
+    this.db
+      .prepare('INSERT OR IGNORE INTO fun_stats (guild_id, user_id) VALUES (?, ?)')
+      .run(guildId, userId);
+  }
+
+  addFunStat(guildId, userId, field, amount = 1) {
+    const allowed = [
+      'rps_wins',
+      'rps_losses',
+      'rps_ties',
+      'trivia_correct',
+      'trivia_wrong',
+      'ttt_wins',
+      'ttt_losses',
+      'hangman_wins',
+    ];
+    if (!allowed.includes(field)) return;
+    this.ensureFunStats(guildId, userId);
+    this.db
+      .prepare(
+        `UPDATE fun_stats SET ${field} = ${field} + ? WHERE guild_id = ? AND user_id = ?`
+      )
+      .run(amount, guildId, userId);
+  }
+
+  getFunStats(guildId, userId) {
+    this.ensureFunStats(guildId, userId);
+    return this.db
+      .prepare('SELECT * FROM fun_stats WHERE guild_id = ? AND user_id = ?')
+      .get(guildId, userId);
+  }
+
+  getFunLeaderboard(guildId, limit = 10) {
+    return this.db
+      .prepare(
+        `SELECT *,
+         (rps_wins * 2 + trivia_correct * 3 + ttt_wins * 5 + hangman_wins * 4) AS score
+         FROM fun_stats
+         WHERE guild_id = ?
+         ORDER BY score DESC, rps_wins DESC, trivia_correct DESC
+         LIMIT ?`
+      )
+      .all(guildId, limit);
   }
 }
 

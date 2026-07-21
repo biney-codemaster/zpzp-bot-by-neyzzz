@@ -13,7 +13,7 @@ White embeds, custom staff permissions, interactive help menu, custom emojis via
 | Welcome | welcome / leave / autorole |
 | Tickets | panel button, staff controls, HTML transcript, logs |
 | Giveaways | gstart / gend / greroll (Enter button) |
-| Fun | 8ball, meme, cat/dog, rps… |
+| Fun | 8ball, meme, cat/dog, trivia, hangman, ttt, leaderboard… |
 | Utility | interactive help, enriched info, button polls, reminders, translate, weather… |
 | Config | prefix, staff roles, modlog, automod… |
 
