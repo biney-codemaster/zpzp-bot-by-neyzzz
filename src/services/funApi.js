@@ -188,25 +188,43 @@ async function fetchTriviaQuestion() {
 }
 
 async function fetchBlackdickImage() {
+  const tagSets = [
+    'black_penis -animated -video',
+    'black_male penis -animated -video',
+    'dark-skinned_male penis -animated -video',
+  ];
+
   return firstOk([
+    async () => {
+      const tags = tagSets[Math.floor(Math.random() * tagSets.length)];
+      const data = await fetchJson(
+        `https://xbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=50&tags=${encodeURIComponent(tags)}`
+      );
+      if (!Array.isArray(data) || !data.length) throw new Error('xbooru empty');
+      const images = data.filter((p) => {
+        const url = p?.file_url || p?.sample_url || '';
+        return /\.(jpe?g|png|webp)$/i.test(url);
+      });
+      const pool = images.length ? images : data;
+      const post = pool[Math.floor(Math.random() * pool.length)];
+      const url = post?.file_url || post?.sample_url;
+      if (!url) throw new Error('xbooru no url');
+      return { url, title: 'NSFW', footer: 'XBooru' };
+    },
     async () => {
       const data = await fetchJson(
         'https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&limit=50&tags=black_penis+-animated+-video'
       );
       if (!Array.isArray(data) || !data.length) throw new Error('rule34 empty');
-      const post = data[Math.floor(Math.random() * data.length)];
+      const images = data.filter((p) => {
+        const url = p?.file_url || p?.sample_url || '';
+        return /\.(jpe?g|png|webp)$/i.test(url);
+      });
+      const pool = images.length ? images : data;
+      const post = pool[Math.floor(Math.random() * pool.length)];
       const url = post?.file_url || post?.sample_url;
       if (!url) throw new Error('rule34 no url');
       return { url, title: 'NSFW', footer: 'Rule34' };
-    },
-    async () => {
-      const types = ['pgif', '4k', 'gonewild', 'ass', 'boobs', 'anal'];
-      const type = types[Math.floor(Math.random() * types.length)];
-      const data = await fetchJson(
-        `https://nekobot.xyz/api/image?type=${type}`
-      );
-      if (!data?.success || !data?.message) throw new Error('nekobot fail');
-      return { url: data.message, title: 'NSFW', footer: 'NekoBot' };
     },
   ]);
 }
