@@ -10,6 +10,9 @@ const { pick } = require('../utils/helpers');
 
 const ROWS = 6;
 const COLS = 7;
+const RED = '🔴';
+const YELLOW = '🟡';
+const EMPTY = '⚫';
 
 function ensureMaps(client) {
   if (!client.c4Games) client.c4Games = new Map();
@@ -45,10 +48,10 @@ function cloneBoard(board) {
 function renderBoard(board) {
   const lines = [];
   for (let r = 0; r < ROWS; r += 1) {
-    lines.push(board[r].map((c) => c || '-').join(' '));
+    lines.push(board[r].map((c) => c || EMPTY).join(''));
   }
-  lines.push('1 2 3 4 5 6 7');
-  return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
+  lines.push('1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣');
+  return lines.join('\n');
 }
 
 function canDrop(board, col) {
@@ -194,6 +197,9 @@ function buildC4Embed({ title, description, footer }) {
 module.exports = {
   ROWS,
   COLS,
+  RED,
+  YELLOW,
+  EMPTY,
   getC4Game,
   setC4Game,
   clearC4Game,

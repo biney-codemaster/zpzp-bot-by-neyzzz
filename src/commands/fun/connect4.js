@@ -8,6 +8,8 @@ const {
   renderBoard,
   buildC4Components,
   buildC4Embed,
+  RED,
+  YELLOW,
 } = require('../../services/connect4');
 
 module.exports = {
@@ -87,8 +89,8 @@ module.exports = {
         challengerId: message.author.id,
         opponentId: member.id,
         marks: {
-          [message.author.id]: 'X',
-          [member.id]: 'O',
+          [message.author.id]: RED,
+          [member.id]: YELLOW,
         },
       };
 
@@ -100,7 +102,7 @@ module.exports = {
               `${message.author} challenged ${member}.`,
               `${member}, press **Accept** to play.`,
               '',
-              'You are **X**, opponent is **O**.',
+              `You are ${RED}, opponent is ${YELLOW}.`,
             ].join('\n'),
           }),
         ],
@@ -124,7 +126,7 @@ module.exports = {
         buildC4Embed({
           title: 'Connect Four',
           description: [
-            'You are **X**, bot is **O**.',
+            `You are ${RED}, bot is ${YELLOW}.`,
             'Click a column (1-7) to drop a piece.',
             renderBoard(solo.board),
           ].join('\n'),

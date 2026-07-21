@@ -63,6 +63,8 @@ const {
   checkWinner: checkC4Winner,
   isBoardFull,
   botMove: c4BotMove,
+  RED,
+  YELLOW,
 } = require('../services/connect4');
 const {
   buildCreateEmbed: buildGiveawayCreateEmbed,
@@ -158,7 +160,7 @@ async function handleConnect4(client, interaction) {
         buildC4Embed({
           title: 'Connect Four',
           description: [
-            `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+            `<@${game.challengerId}> (${RED}) vs <@${game.opponentId}> (${YELLOW})`,
             'Click a column (1-7) to drop a piece.',
             renderC4Board(game.board),
             '',
@@ -218,14 +220,14 @@ async function handleConnect4(client, interaction) {
         });
       }
 
-      if (dropPiece(game.board, col, 'X') < 0) {
+      if (dropPiece(game.board, col, RED) < 0) {
         return interaction.reply({
           embeds: [error('That column is full.')],
           ephemeral: true,
         });
       }
 
-      if (checkC4Winner(game.board, 'X')) {
+      if (checkC4Winner(game.board, RED)) {
         clearC4Game(client, guildId, channelId);
         client.db.addFunStat(guildId, interaction.user.id, 'c4_wins');
         return interaction.update({
@@ -252,10 +254,10 @@ async function handleConnect4(client, interaction) {
         });
       }
 
-      const botCol = c4BotMove(game.board, 'O', 'X');
-      if (botCol >= 0) dropPiece(game.board, botCol, 'O');
+      const botCol = c4BotMove(game.board, YELLOW, RED);
+      if (botCol >= 0) dropPiece(game.board, botCol, YELLOW);
 
-      if (checkC4Winner(game.board, 'O')) {
+      if (checkC4Winner(game.board, YELLOW)) {
         clearC4Game(client, guildId, channelId);
         client.db.addFunStat(guildId, interaction.user.id, 'c4_losses');
         return interaction.update({
@@ -288,7 +290,7 @@ async function handleConnect4(client, interaction) {
           buildC4Embed({
             title: 'Connect Four',
             description: [
-              'You are **X**, bot is **O**.',
+              `You are ${RED}, bot is ${YELLOW}.`,
               'Click a column (1-7) to drop a piece.',
               renderC4Board(game.board),
             ].join('\n'),
@@ -359,7 +361,7 @@ async function handleConnect4(client, interaction) {
           buildC4Embed({
             title: 'Connect Four',
             description: [
-              `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+              `<@${game.challengerId}> (${RED}) vs <@${game.opponentId}> (${YELLOW})`,
               renderC4Board(game.board),
               '',
               `<@${game.turn}>'s turn. Click a column.`,
