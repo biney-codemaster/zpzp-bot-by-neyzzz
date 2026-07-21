@@ -53,6 +53,18 @@ const {
   botMove,
 } = require('../services/funGames');
 const {
+  getC4Game,
+  setC4Game,
+  clearC4Game,
+  renderBoard: renderC4Board,
+  buildC4Components,
+  buildC4Embed,
+  dropPiece,
+  checkWinner: checkC4Winner,
+  isBoardFull,
+  botMove: c4BotMove,
+} = require('../services/connect4');
+const {
   buildCreateEmbed: buildGiveawayCreateEmbed,
   mainMenu: giveawayCreateMenu,
   backRow: giveawayCreateBackRow,
@@ -71,6 +83,294 @@ const {
   defaultDraft,
   postGiveaway,
 } = require('../services/giveawayCreate');
+
+async function handleConnect4(client, interaction) {
+  if (!interaction.isButton() || !interaction.guild) return;
+
+  const id = interaction.customId;
+  if (
+    id !== 'c4_accept' &&
+    id !== 'c4_decline' &&
+    id !== 'c4_quit' &&
+    !id.startsWith('c4_drop:')
+  ) {
+    return;
+  }
+
+  const guildId = interaction.guild.id;
+  const channelId = interaction.channel.id;
+  const game = getC4Game(client, guildId, channelId);
+
+  if (!game) {
+    return interaction.reply({
+      embeds: [error('No active Connect Four game here.')],
+      ephemeral: true,
+    });
+  }
+
+  if (game.messageId && game.messageId !== interaction.message.id) {
+    return interaction.reply({
+      embeds: [error('This board is outdated. Use the latest game message.')],
+      ephemeral: true,
+    });
+  }
+
+  if (id === 'c4_decline') {
+    if (
+      interaction.user.id !== game.opponentId &&
+      interaction.user.id !== game.challengerId
+    ) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can decline.')],
+        ephemeral: true,
+      });
+    }
+    clearC4Game(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildC4Embed({
+          title: 'Connect Four',
+          description: 'Challenge declined.',
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id === 'c4_accept') {
+    if (game.mode !== 'pvp' || game.status !== 'pending') {
+      return interaction.reply({
+        embeds: [error('No pending challenge.')],
+        ephemeral: true,
+      });
+    }
+    if (interaction.user.id !== game.opponentId) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can accept.')],
+        ephemeral: true,
+      });
+    }
+    game.status = 'active';
+    game.turn = game.challengerId;
+    setC4Game(client, guildId, channelId, game);
+    return interaction.update({
+      embeds: [
+        buildC4Embed({
+          title: 'Connect Four',
+          description: [
+            `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+            'Click a column (1-7) to drop a piece.',
+            renderC4Board(game.board),
+            '',
+            `<@${game.turn}> goes first.`,
+          ].join('\n'),
+        }),
+      ],
+      components: buildC4Components(game.board),
+    });
+  }
+
+  if (id === 'c4_quit') {
+    const canQuit =
+      (game.mode === 'bot' && interaction.user.id === game.playerId) ||
+      (game.mode === 'pvp' &&
+        (interaction.user.id === game.challengerId ||
+          interaction.user.id === game.opponentId));
+    if (!canQuit) {
+      return interaction.reply({
+        embeds: [error('Only players can quit this game.')],
+        ephemeral: true,
+      });
+    }
+    clearC4Game(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildC4Embed({
+          title: 'Connect Four',
+          description: `${interaction.user} ended the game.`,
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id.startsWith('c4_drop:')) {
+    if (game.status !== 'active') {
+      return interaction.reply({
+        embeds: [error('This game is not active yet.')],
+        ephemeral: true,
+      });
+    }
+
+    const col = Number(id.split(':')[1]);
+    if (Number.isNaN(col) || col < 0 || col > 6) {
+      return interaction.reply({
+        embeds: [error('Invalid column.')],
+        ephemeral: true,
+      });
+    }
+
+    if (game.mode === 'bot') {
+      if (interaction.user.id !== game.playerId) {
+        return interaction.reply({
+          embeds: [error('This is not your game.')],
+          ephemeral: true,
+        });
+      }
+
+      if (dropPiece(game.board, col, 'X') < 0) {
+        return interaction.reply({
+          embeds: [error('That column is full.')],
+          ephemeral: true,
+        });
+      }
+
+      if (checkC4Winner(game.board, 'X')) {
+        clearC4Game(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'c4_wins');
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — You win',
+              description: [renderC4Board(game.board), '', 'You win!'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      if (isBoardFull(game.board)) {
+        clearC4Game(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Draw',
+              description: [renderC4Board(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      const botCol = c4BotMove(game.board, 'O', 'X');
+      if (botCol >= 0) dropPiece(game.board, botCol, 'O');
+
+      if (checkC4Winner(game.board, 'O')) {
+        clearC4Game(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'c4_losses');
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Bot wins',
+              description: [renderC4Board(game.board), '', 'Bot wins.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      if (isBoardFull(game.board)) {
+        clearC4Game(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Draw',
+              description: [renderC4Board(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      setC4Game(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildC4Embed({
+            title: 'Connect Four',
+            description: [
+              'You are **X**, bot is **O**.',
+              'Click a column (1-7) to drop a piece.',
+              renderC4Board(game.board),
+            ].join('\n'),
+            footer: `${interaction.user.tag}'s turn`,
+          }),
+        ],
+        components: buildC4Components(game.board),
+      });
+    }
+
+    if (game.mode === 'pvp') {
+      if (interaction.user.id !== game.turn) {
+        return interaction.reply({
+          embeds: [error('It is not your turn.')],
+          ephemeral: true,
+        });
+      }
+
+      const mark = game.marks[interaction.user.id];
+      if (dropPiece(game.board, col, mark) < 0) {
+        return interaction.reply({
+          embeds: [error('That column is full.')],
+          ephemeral: true,
+        });
+      }
+
+      if (checkC4Winner(game.board, mark)) {
+        clearC4Game(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'c4_wins');
+        const loserId =
+          interaction.user.id === game.challengerId
+            ? game.opponentId
+            : game.challengerId;
+        client.db.addFunStat(guildId, loserId, 'c4_losses');
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Winner',
+              description: [
+                renderC4Board(game.board),
+                '',
+                `${interaction.user} wins!`,
+              ].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      if (isBoardFull(game.board)) {
+        clearC4Game(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Draw',
+              description: [renderC4Board(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      game.turn =
+        game.turn === game.challengerId ? game.opponentId : game.challengerId;
+      setC4Game(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildC4Embed({
+            title: 'Connect Four',
+            description: [
+              `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+              renderC4Board(game.board),
+              '',
+              `<@${game.turn}>'s turn. Click a column.`,
+            ].join('\n'),
+          }),
+        ],
+        components: buildC4Components(game.board),
+      });
+    }
+  }
+}
 
 async function handleTtt(client, interaction) {
   if (!interaction.isButton()) return;
@@ -1210,6 +1510,10 @@ module.exports = {
         interaction.customId === 'ttt_quit')
     ) {
       return handleTtt(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('c4_')) {
+      return handleConnect4(client, interaction);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('poll_vote:')) {

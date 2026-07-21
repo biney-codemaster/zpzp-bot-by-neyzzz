@@ -2,7 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const { color, info } = require('../../utils/embeds');
 
 function statLine(label, value) {
-  return `**${label}:** ${value}`;
+  return `**${label}:** ${value ?? 0}`;
 }
 
 module.exports = {
@@ -23,7 +23,8 @@ module.exports = {
         s.rps_wins * 2 +
         s.trivia_correct * 3 +
         s.ttt_wins * 5 +
-        s.hangman_wins * 4;
+        s.hangman_wins * 4 +
+        (s.c4_wins || 0) * 5;
 
       return message.reply({
         embeds: [
@@ -41,11 +42,13 @@ module.exports = {
                 statLine('Trivia wrong', s.trivia_wrong),
                 statLine('Tic-tac-toe wins', s.ttt_wins),
                 statLine('Tic-tac-toe losses', s.ttt_losses),
+                statLine('Connect Four wins', s.c4_wins || 0),
+                statLine('Connect Four losses', s.c4_losses || 0),
                 statLine('Hangman wins', s.hangman_wins),
               ].join('\n')
             )
             .setFooter({
-              text: 'Score = RPSx2 + Triviax3 + TTTx5 + Hangmanx4',
+              text: 'Score = RPSx2 + Triviax3 + TTTx5 + C4x5 + Hangmanx4',
             })
             .setTimestamp(),
         ],
@@ -61,7 +64,7 @@ module.exports = {
           info(
             [
               'No scores yet.',
-              `Play \`${prefix}rps\`, \`${prefix}trivia\`, \`${prefix}ttt\`, or \`${prefix}hangman\`.`,
+              `Play \`${prefix}rps\`, \`${prefix}trivia\`, \`${prefix}ttt\`, \`${prefix}connect4\`, or \`${prefix}hangman\`.`,
             ].join('\n'),
             'Fun leaderboard'
           ),
@@ -72,7 +75,7 @@ module.exports = {
     const lines = active.map((r, i) => {
       const medal =
         i === 0 ? '1.' : i === 1 ? '2.' : i === 2 ? '3.' : `${i + 1}.`;
-      return `${medal} <@${r.user_id}> — **${r.score}** pts (RPS ${r.rps_wins} • Trivia ${r.trivia_correct} • TTT ${r.ttt_wins} • Hangman ${r.hangman_wins})`;
+      return `${medal} <@${r.user_id}> — **${r.score}** pts (RPS ${r.rps_wins} • Trivia ${r.trivia_correct} • TTT ${r.ttt_wins} • C4 ${r.c4_wins || 0} • Hangman ${r.hangman_wins})`;
     });
 
     return message.reply({

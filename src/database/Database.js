@@ -136,6 +136,8 @@ class Database {
     this.#ensureColumn('giveaways', 'ping_on_end', 'INTEGER');
     this.#ensureColumn('giveaways', 'winner_ids', 'TEXT');
     this.#ensureColumn('giveaways', 'giveaway_settings', 'TEXT');
+    this.#ensureColumn('fun_stats', 'c4_wins', 'INTEGER NOT NULL DEFAULT 0');
+    this.#ensureColumn('fun_stats', 'c4_losses', 'INTEGER NOT NULL DEFAULT 0');
   }
 
   #ensureColumn(table, column, type) {
@@ -441,6 +443,8 @@ class Database {
       'ttt_wins',
       'ttt_losses',
       'hangman_wins',
+      'c4_wins',
+      'c4_losses',
     ];
     if (!allowed.includes(field)) return;
     this.ensureFunStats(guildId, userId);
@@ -462,7 +466,7 @@ class Database {
     return this.db
       .prepare(
         `SELECT *,
-         (rps_wins * 2 + trivia_correct * 3 + ttt_wins * 5 + hangman_wins * 4) AS score
+         (rps_wins * 2 + trivia_correct * 3 + ttt_wins * 5 + hangman_wins * 4 + c4_wins * 5) AS score
          FROM fun_stats
          WHERE guild_id = ?
          ORDER BY score DESC, rps_wins DESC, trivia_correct DESC
