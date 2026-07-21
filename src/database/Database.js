@@ -138,6 +138,13 @@ class Database {
     this.#ensureColumn('giveaways', 'giveaway_settings', 'TEXT');
     this.#ensureColumn('fun_stats', 'c4_wins', 'INTEGER NOT NULL DEFAULT 0');
     this.#ensureColumn('fun_stats', 'c4_losses', 'INTEGER NOT NULL DEFAULT 0');
+    this.#ensureColumn('guilds', 'automod_ignore_channels', "TEXT NOT NULL DEFAULT '[]'");
+    this.#ensureColumn('guilds', 'automod_ignore_roles', "TEXT NOT NULL DEFAULT '[]'");
+    this.#ensureColumn('guilds', 'automod_log', 'INTEGER NOT NULL DEFAULT 0');
+    this.#ensureColumn('guilds', 'automod_antilink_action', "TEXT NOT NULL DEFAULT 'delete'");
+    this.#ensureColumn('guilds', 'automod_antispam_action', "TEXT NOT NULL DEFAULT 'timeout'");
+    this.#ensureColumn('guilds', 'automod_badwords_action', "TEXT NOT NULL DEFAULT 'delete'");
+    this.#ensureColumn('guilds', 'automod_timeout_seconds', 'INTEGER NOT NULL DEFAULT 30');
   }
 
   #ensureColumn(table, column, type) {

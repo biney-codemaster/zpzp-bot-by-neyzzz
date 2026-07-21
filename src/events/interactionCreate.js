@@ -85,6 +85,42 @@ const {
   defaultDraft,
   postGiveaway,
 } = require('../services/giveawayCreate');
+const {
+  buildWelcomeEmbed,
+  mainMenu: welcomeMainMenu,
+  channelPicker: welcomeChannelPicker,
+  messageModal: welcomeMessageModal,
+  pickerEmbed: welcomePickerEmbed,
+  buildPreviewEmbed: buildWelcomePreview,
+  resetWelcome,
+  assertOwner: assertWelcomeOwner,
+} = require('../services/welcomeSetup');
+const {
+  buildLeaveEmbed,
+  mainMenu: leaveMainMenu,
+  channelPicker: leaveChannelPicker,
+  messageModal: leaveMessageModal,
+  pickerEmbed: leavePickerEmbed,
+  buildPreviewEmbed: buildLeavePreview,
+  resetLeave,
+  assertOwner: assertLeaveOwner,
+} = require('../services/leaveSetup');
+const {
+  buildAutomodEmbed,
+  mainMenu: automodMainMenu,
+  punishPicker,
+  ignoreChannelPicker,
+  ignoreRolePicker,
+  badwordsMenu,
+  removeWordPicker,
+  addWordModal,
+  timeoutModal,
+  pickerEmbed: automodPickerEmbed,
+  resetAutomod,
+  assertOwner: assertAutomodOwner,
+  parseJsonArray,
+} = require('../services/automodSetup');
+const { fullConfigReset } = require('../services/configDefaults');
 
 async function handleConnect4(client, interaction) {
   if (!interaction.isButton() || !interaction.guild) return;
@@ -1458,6 +1494,611 @@ async function handleTicketSetup(client, interaction) {
   }
 }
 
+async function ensureConfigAdmin(client, interaction) {
+  const guildData = client.db.ensureGuild(interaction.guild.id);
+  if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+    await interaction.reply({
+      embeds: [error('Admin permission required.')],
+      ephemeral: true,
+    });
+    return null;
+  }
+  return guildData;
+}
+
+async function handleWelcomeSetup(client, interaction) {
+  if (interaction.isModalSubmit() && interaction.customId === 'wsetup_message_modal') {
+    if (!(await ensureConfigAdmin(client, interaction))) return;
+    const text = interaction.fields.getTextInputValue('welcome_message').trim();
+    if (!text) {
+      return interaction.reply({
+        embeds: [error('Message cannot be empty.')],
+        ephemeral: true,
+      });
+    }
+    client.db.updateGuild(interaction.guild.id, { welcome_message: text });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildWelcomeEmbed(interaction.guild, data)],
+      components: welcomeMainMenu(interaction.user.id),
+    }).catch(async () => {
+      await interaction.reply({
+        embeds: [success('Welcome message updated.')],
+        ephemeral: true,
+      });
+    });
+  }
+
+  const [action, ownerId] = interaction.customId.split(':');
+  if (!assertWelcomeOwner(interaction, ownerId)) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use this menu.')],
+      ephemeral: true,
+    });
+  }
+  if (!(await ensureConfigAdmin(client, interaction))) return;
+
+  if (action === 'wsetup_close') {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Welcome setup closed. Run `+setwelcome` to open it again.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'wsetup_back') {
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildWelcomeEmbed(interaction.guild, data)],
+      components: welcomeMainMenu(ownerId),
+    });
+  }
+
+  if (action === 'wsetup_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+
+    if (choice === 'channel') {
+      return interaction.update({
+        embeds: [
+          welcomePickerEmbed(
+            'Select welcome channel',
+            'Choose where welcome messages are sent.'
+          ),
+        ],
+        components: welcomeChannelPicker(ownerId),
+      });
+    }
+
+    if (choice === 'message') {
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.showModal(welcomeMessageModal(data));
+    }
+
+    if (choice === 'preview') {
+      const data = client.db.ensureGuild(interaction.guild.id);
+      await interaction.update({
+        embeds: [buildWelcomeEmbed(interaction.guild, data)],
+        components: welcomeMainMenu(ownerId),
+      });
+      return interaction.followUp({
+        embeds: [buildWelcomePreview(interaction.member, data)],
+        ephemeral: true,
+      });
+    }
+
+    if (choice === 'disable') {
+      client.db.updateGuild(interaction.guild.id, { welcome_channel: null });
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildWelcomeEmbed(interaction.guild, data)],
+        components: welcomeMainMenu(ownerId),
+      });
+    }
+
+    if (choice === 'reset') {
+      resetWelcome(client.db, interaction.guild.id);
+      const data = client.db.ensureGuild(interaction.guild.id);
+      await interaction.update({
+        embeds: [buildWelcomeEmbed(interaction.guild, data)],
+        components: welcomeMainMenu(ownerId),
+      });
+      return interaction.followUp({
+        embeds: [success('Welcome settings reset to defaults.')],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (action === 'wsetup_channel' && interaction.isChannelSelectMenu()) {
+    const channel = interaction.channels.first();
+    client.db.updateGuild(interaction.guild.id, {
+      welcome_channel: channel.id,
+    });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildWelcomeEmbed(interaction.guild, data)],
+      components: welcomeMainMenu(ownerId),
+    });
+  }
+}
+
+async function handleLeaveSetup(client, interaction) {
+  if (interaction.isModalSubmit() && interaction.customId === 'lsetup_message_modal') {
+    if (!(await ensureConfigAdmin(client, interaction))) return;
+    const text = interaction.fields.getTextInputValue('leave_message').trim();
+    if (!text) {
+      return interaction.reply({
+        embeds: [error('Message cannot be empty.')],
+        ephemeral: true,
+      });
+    }
+    client.db.updateGuild(interaction.guild.id, { leave_message: text });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildLeaveEmbed(interaction.guild, data)],
+      components: leaveMainMenu(interaction.user.id),
+    }).catch(async () => {
+      await interaction.reply({
+        embeds: [success('Leave message updated.')],
+        ephemeral: true,
+      });
+    });
+  }
+
+  const [action, ownerId] = interaction.customId.split(':');
+  if (!assertLeaveOwner(interaction, ownerId)) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use this menu.')],
+      ephemeral: true,
+    });
+  }
+  if (!(await ensureConfigAdmin(client, interaction))) return;
+
+  if (action === 'lsetup_close') {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Leave setup closed. Run `+setleave` to open it again.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'lsetup_back') {
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildLeaveEmbed(interaction.guild, data)],
+      components: leaveMainMenu(ownerId),
+    });
+  }
+
+  if (action === 'lsetup_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+
+    if (choice === 'channel') {
+      return interaction.update({
+        embeds: [
+          leavePickerEmbed(
+            'Select leave channel',
+            'Choose where leave messages are sent.'
+          ),
+        ],
+        components: leaveChannelPicker(ownerId),
+      });
+    }
+
+    if (choice === 'message') {
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.showModal(leaveMessageModal(data));
+    }
+
+    if (choice === 'preview') {
+      const data = client.db.ensureGuild(interaction.guild.id);
+      await interaction.update({
+        embeds: [buildLeaveEmbed(interaction.guild, data)],
+        components: leaveMainMenu(ownerId),
+      });
+      return interaction.followUp({
+        embeds: [buildLeavePreview(interaction.member, data)],
+        ephemeral: true,
+      });
+    }
+
+    if (choice === 'disable') {
+      client.db.updateGuild(interaction.guild.id, { leave_channel: null });
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildLeaveEmbed(interaction.guild, data)],
+        components: leaveMainMenu(ownerId),
+      });
+    }
+
+    if (choice === 'reset') {
+      resetLeave(client.db, interaction.guild.id);
+      const data = client.db.ensureGuild(interaction.guild.id);
+      await interaction.update({
+        embeds: [buildLeaveEmbed(interaction.guild, data)],
+        components: leaveMainMenu(ownerId),
+      });
+      return interaction.followUp({
+        embeds: [success('Leave settings reset to defaults.')],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (action === 'lsetup_channel' && interaction.isChannelSelectMenu()) {
+    const channel = interaction.channels.first();
+    client.db.updateGuild(interaction.guild.id, {
+      leave_channel: channel.id,
+    });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildLeaveEmbed(interaction.guild, data)],
+      components: leaveMainMenu(ownerId),
+    });
+  }
+}
+
+async function handleAutomodSetup(client, interaction) {
+  if (interaction.isModalSubmit()) {
+    if (!(await ensureConfigAdmin(client, interaction))) return;
+
+    if (interaction.customId === 'asetup_badword_modal') {
+      const word = interaction.fields
+        .getTextInputValue('badword')
+        .trim()
+        .toLowerCase();
+      if (!word) {
+        return interaction.reply({
+          embeds: [error('Provide a word.')],
+          ephemeral: true,
+        });
+      }
+      const current = client.db.ensureGuild(interaction.guild.id);
+      const words = parseJsonArray(current.badwords);
+      if (!words.includes(word)) words.push(word);
+      client.db.updateGuild(interaction.guild.id, {
+        badwords: JSON.stringify(words),
+        automod_badwords: 1,
+      });
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildAutomodEmbed(interaction.guild, data)],
+        components: automodMainMenu(interaction.user.id),
+      }).catch(async () => {
+        await interaction.reply({
+          embeds: [success(`Added: \`${word}\``)],
+          ephemeral: true,
+        });
+      });
+    }
+
+    if (interaction.customId === 'asetup_timeout_modal') {
+      const raw = interaction.fields.getTextInputValue('timeout_seconds').trim();
+      const seconds = Number.parseInt(raw, 10);
+      if (!Number.isFinite(seconds) || seconds < 5 || seconds > 600) {
+        return interaction.reply({
+          embeds: [error('Enter a number between 5 and 600.')],
+          ephemeral: true,
+        });
+      }
+      client.db.updateGuild(interaction.guild.id, {
+        automod_timeout_seconds: seconds,
+      });
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.update({
+        embeds: [buildAutomodEmbed(interaction.guild, data)],
+        components: automodMainMenu(interaction.user.id),
+      }).catch(async () => {
+        await interaction.reply({
+          embeds: [success(`Timeout duration set to ${seconds}s.`)],
+          ephemeral: true,
+        });
+      });
+    }
+  }
+
+  const parts = interaction.customId.split(':');
+  const action = parts[0];
+  const ownerId = parts[1];
+
+  if (!assertAutomodOwner(interaction, ownerId)) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use this menu.')],
+      ephemeral: true,
+    });
+  }
+  if (!(await ensureConfigAdmin(client, interaction))) return;
+
+  const refresh = () => {
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction.update({
+      embeds: [buildAutomodEmbed(interaction.guild, data)],
+      components: automodMainMenu(ownerId),
+    });
+  };
+
+  if (action === 'asetup_close') {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Automod setup closed. Run `+automod` to open it again.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'asetup_back') {
+    return refresh();
+  }
+
+  if (action === 'asetup_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+    const data = client.db.ensureGuild(interaction.guild.id);
+
+    if (choice === 'toggle_antilink') {
+      client.db.updateGuild(interaction.guild.id, {
+        automod_antilink: data.automod_antilink ? 0 : 1,
+      });
+      return refresh();
+    }
+    if (choice === 'toggle_antispam') {
+      client.db.updateGuild(interaction.guild.id, {
+        automod_antispam: data.automod_antispam ? 0 : 1,
+      });
+      return refresh();
+    }
+    if (choice === 'toggle_badwords') {
+      client.db.updateGuild(interaction.guild.id, {
+        automod_badwords: data.automod_badwords ? 0 : 1,
+      });
+      return refresh();
+    }
+    if (choice === 'toggle_log') {
+      client.db.updateGuild(interaction.guild.id, {
+        automod_log: data.automod_log ? 0 : 1,
+      });
+      return refresh();
+    }
+
+    if (choice === 'punish_antilink') {
+      return interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Anti-link punishment',
+            'Choose what happens when a link is posted.'
+          ),
+        ],
+        components: punishPicker(ownerId, 'antilink', [
+          { label: 'Delete', value: 'delete', description: 'Delete the message' },
+          { label: 'Warn', value: 'warn', description: 'Delete and warn the user' },
+          { label: 'Timeout', value: 'timeout', description: 'Delete and timeout' },
+        ]),
+      });
+    }
+
+    if (choice === 'punish_antispam') {
+      return interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Anti-spam punishment',
+            'Choose what happens when spam is detected.'
+          ),
+        ],
+        components: punishPicker(ownerId, 'antispam', [
+          { label: 'Warn', value: 'warn', description: 'Warn the user' },
+          { label: 'Timeout', value: 'timeout', description: 'Timeout the user' },
+        ]),
+      });
+    }
+
+    if (choice === 'punish_badwords') {
+      return interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Bad words punishment',
+            'Choose what happens when a banned word is used.'
+          ),
+        ],
+        components: punishPicker(ownerId, 'badwords', [
+          { label: 'Delete', value: 'delete', description: 'Delete the message' },
+          { label: 'Warn', value: 'warn', description: 'Delete and warn the user' },
+          { label: 'Timeout', value: 'timeout', description: 'Delete and timeout' },
+        ]),
+      });
+    }
+
+    if (choice === 'ignore_channels') {
+      return interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Ignore channels',
+            'Select channels where automod should not run. Leave empty and submit to clear.'
+          ),
+        ],
+        components: ignoreChannelPicker(ownerId),
+      });
+    }
+
+    if (choice === 'ignore_roles') {
+      return interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Ignore roles',
+            'Select roles skipped by automod. Leave empty and submit to clear.'
+          ),
+        ],
+        components: ignoreRolePicker(ownerId),
+      });
+    }
+
+    if (choice === 'timeout_seconds') {
+      return interaction.showModal(timeoutModal(data));
+    }
+
+    if (choice === 'badwords') {
+      return interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Bad words',
+            'Add, remove, list, or clear banned words.'
+          ),
+        ],
+        components: badwordsMenu(ownerId),
+      });
+    }
+
+    if (choice === 'clear_ignores') {
+      client.db.updateGuild(interaction.guild.id, {
+        automod_ignore_channels: '[]',
+        automod_ignore_roles: '[]',
+      });
+      return refresh();
+    }
+
+    if (choice === 'reset') {
+      resetAutomod(client.db, interaction.guild.id);
+      await refresh();
+      return interaction.followUp({
+        embeds: [success('Automod settings reset to defaults.')],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (action === 'asetup_punish' && interaction.isStringSelectMenu()) {
+    const kind = parts[2];
+    const value = interaction.values[0];
+    const key =
+      kind === 'antilink'
+        ? 'automod_antilink_action'
+        : kind === 'antispam'
+          ? 'automod_antispam_action'
+          : 'automod_badwords_action';
+    client.db.updateGuild(interaction.guild.id, { [key]: value });
+    return refresh();
+  }
+
+  if (action === 'asetup_ignore_channels' && interaction.isChannelSelectMenu()) {
+    const ids = [...interaction.channels.keys()];
+    client.db.updateGuild(interaction.guild.id, {
+      automod_ignore_channels: JSON.stringify(ids),
+    });
+    return refresh();
+  }
+
+  if (action === 'asetup_ignore_roles' && interaction.isRoleSelectMenu()) {
+    const ids = [...interaction.roles.keys()];
+    client.db.updateGuild(interaction.guild.id, {
+      automod_ignore_roles: JSON.stringify(ids),
+    });
+    return refresh();
+  }
+
+  if (action === 'asetup_badwords_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+    const data = client.db.ensureGuild(interaction.guild.id);
+    const words = parseJsonArray(data.badwords);
+
+    if (choice === 'add') {
+      return interaction.showModal(addWordModal());
+    }
+    if (choice === 'list') {
+      await interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Bad words',
+            'Add, remove, list, or clear banned words.'
+          ),
+        ],
+        components: badwordsMenu(ownerId),
+      });
+      return interaction.followUp({
+        embeds: [
+          info(
+            words.length ? words.map((w) => `\`${w}\``).join(', ') : 'Empty list.',
+            'Bad words'
+          ),
+        ],
+        ephemeral: true,
+      });
+    }
+    if (choice === 'clear') {
+      client.db.updateGuild(interaction.guild.id, { badwords: '[]' });
+      return refresh();
+    }
+    if (choice === 'remove') {
+      if (!words.length) {
+        return interaction.reply({
+          embeds: [error('Bad words list is empty.')],
+          ephemeral: true,
+        });
+      }
+      return interaction.update({
+        embeds: [
+          automodPickerEmbed(
+            'Remove bad word',
+            'Select a word to remove from the list.'
+          ),
+        ],
+        components: removeWordPicker(ownerId, words),
+      });
+    }
+  }
+
+  if (action === 'asetup_badwords_remove' && interaction.isStringSelectMenu()) {
+    const word = interaction.values[0];
+    const data = client.db.ensureGuild(interaction.guild.id);
+    const words = parseJsonArray(data.badwords).filter((w) => w !== word);
+    client.db.updateGuild(interaction.guild.id, {
+      badwords: JSON.stringify(words),
+    });
+    return refresh();
+  }
+}
+
+async function handleConfigReset(client, interaction) {
+  const [action, ownerId] = interaction.customId.split(':');
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use these buttons.')],
+      ephemeral: true,
+    });
+  }
+  if (!(await ensureConfigAdmin(client, interaction))) return;
+
+  if (action === 'cfgreset_cancel') {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Configuration reset cancelled.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'cfgreset_confirm') {
+    client.db.updateGuild(interaction.guild.id, fullConfigReset());
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setTitle(withEmoji('config', 'Configuration reset'))
+          .setDescription('All server settings were reset to defaults.')
+          .setTimestamp(),
+      ],
+      components: [],
+    });
+  }
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(client, interaction) {
@@ -1476,6 +2117,48 @@ module.exports = {
       interaction.customId.startsWith('tsetup_')
     ) {
       return handleTicketSetup(client, interaction);
+    }
+
+    if (
+      (interaction.isStringSelectMenu() ||
+        interaction.isChannelSelectMenu() ||
+        interaction.isButton() ||
+        interaction.isModalSubmit()) &&
+      (interaction.customId.startsWith('wsetup_') ||
+        interaction.customId === 'wsetup_message_modal')
+    ) {
+      return handleWelcomeSetup(client, interaction);
+    }
+
+    if (
+      (interaction.isStringSelectMenu() ||
+        interaction.isChannelSelectMenu() ||
+        interaction.isButton() ||
+        interaction.isModalSubmit()) &&
+      (interaction.customId.startsWith('lsetup_') ||
+        interaction.customId === 'lsetup_message_modal')
+    ) {
+      return handleLeaveSetup(client, interaction);
+    }
+
+    if (
+      (interaction.isStringSelectMenu() ||
+        interaction.isChannelSelectMenu() ||
+        interaction.isRoleSelectMenu() ||
+        interaction.isButton() ||
+        interaction.isModalSubmit()) &&
+      (interaction.customId.startsWith('asetup_') ||
+        interaction.customId === 'asetup_badword_modal' ||
+        interaction.customId === 'asetup_timeout_modal')
+    ) {
+      return handleAutomodSetup(client, interaction);
+    }
+
+    if (
+      interaction.isButton() &&
+      interaction.customId.startsWith('cfgreset_')
+    ) {
+      return handleConfigReset(client, interaction);
     }
 
     if (
