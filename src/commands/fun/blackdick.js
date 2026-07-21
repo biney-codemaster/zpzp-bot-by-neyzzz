@@ -9,14 +9,6 @@ module.exports = {
   permLevel: 'admin',
   cooldown: 5,
   async execute(client, message) {
-    if (!message.channel.nsfw) {
-      return message.reply({
-        embeds: [
-          error('This command can only be used in an **NSFW** channel.'),
-        ],
-      });
-    }
-
     try {
       const img = await fetchBlackdickImage();
       return message.reply({ embeds: [imageEmbed(img)] });
