@@ -56,15 +56,39 @@ function pickWinners(map, count) {
   return [...new Set(winners)];
 }
 
-function getGiveawaySettings(guildData) {
+function normalizeSettings(raw = {}) {
   return {
-    requiredRole: guildData.giveaway_required_role || null,
-    minAccountDays: guildData.giveaway_min_account_days || 0,
-    boostersOnly: Boolean(guildData.giveaway_boosters_only),
-    bonusRole: guildData.giveaway_bonus_role || null,
-    bonusEntries: guildData.giveaway_bonus_entries || 0,
-    pingOnEnd: Boolean(guildData.giveaway_ping_on_end),
+    requiredRole: raw.requiredRole || null,
+    minAccountDays: raw.minAccountDays || 0,
+    boostersOnly: Boolean(raw.boostersOnly),
+    bonusRole: raw.bonusRole || null,
+    bonusEntries: raw.bonusEntries || 0,
+    pingOnEnd: Boolean(raw.pingOnEnd),
   };
+}
+
+function parseGiveawaySettings(raw) {
+  if (!raw) return null;
+  try {
+    return normalizeSettings(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function getGiveawaySettings(guildData, giveaway = null) {
+  const fromGiveaway = giveaway ? parseGiveawaySettings(giveaway.giveaway_settings) : null;
+  if (fromGiveaway) return fromGiveaway;
+
+  if (!guildData) return normalizeSettings({});
+  return normalizeSettings({
+    requiredRole: guildData.giveaway_required_role,
+    minAccountDays: guildData.giveaway_min_account_days,
+    boostersOnly: guildData.giveaway_boosters_only,
+    bonusRole: guildData.giveaway_bonus_role,
+    bonusEntries: guildData.giveaway_bonus_entries,
+    pingOnEnd: guildData.giveaway_ping_on_end,
+  });
 }
 
 function requirementLines(settings, guild) {
@@ -122,10 +146,11 @@ function entryWeight(member, settings) {
   return weight;
 }
 
-function buildGiveawayEmbed(giveaway, guild, guildData, hostTag) {
+function buildGiveawayEmbed(giveaway, guild, guildData, hostTag, settingsOverride = null) {
   const map = parseEntryMap(giveaway.entries);
   const { entries, participants } = entryStats(map);
-  const settings = getGiveawaySettings(guildData);
+  const settings =
+    settingsOverride || getGiveawaySettings(guildData, giveaway);
 
   const lines = [
     `**Prize:** ${giveaway.prize}`,
@@ -190,11 +215,12 @@ async function refreshGiveawayMessage(client, messageId) {
   const host = await client.users.fetch(giveaway.host_id).catch(() => null);
   const guild = await client.guilds.fetch(giveaway.guild_id).catch(() => null);
   const guildData = client.db.ensureGuild(giveaway.guild_id);
+  const settings = getGiveawaySettings(guildData, giveaway);
 
   await message
     .edit({
       embeds: [
-        buildGiveawayEmbed(giveaway, guild, guildData, host?.tag),
+        buildGiveawayEmbed(giveaway, guild, guildData, host?.tag, settings),
       ],
       components: buildGiveawayComponents(false, false),
     })
@@ -220,7 +246,7 @@ async function endGiveaway(client, messageId, { ping = null } = {}) {
 
   const host = await client.users.fetch(giveaway.host_id).catch(() => null);
   const guildData = client.db.ensureGuild(giveaway.guild_id);
-  const settings = getGiveawaySettings(guildData);
+  const settings = getGiveawaySettings(guildData, giveaway);
   const shouldPing =
     ping !== null ? ping : Boolean(giveaway.ping_on_end ?? settings.pingOnEnd);
 
@@ -320,6 +346,8 @@ module.exports = {
   entryStats,
   expandEntryPool,
   pickWinners,
+  normalizeSettings,
+  parseGiveawaySettings,
   getGiveawaySettings,
   requirementLines,
   checkEligibility,

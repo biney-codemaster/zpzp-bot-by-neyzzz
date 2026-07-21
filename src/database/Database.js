@@ -135,6 +135,7 @@ class Database {
     this.#ensureColumn('giveaways', 'cancelled', 'INTEGER NOT NULL DEFAULT 0');
     this.#ensureColumn('giveaways', 'ping_on_end', 'INTEGER');
     this.#ensureColumn('giveaways', 'winner_ids', 'TEXT');
+    this.#ensureColumn('giveaways', 'giveaway_settings', 'TEXT');
   }
 
   #ensureColumn(table, column, type) {
@@ -269,8 +270,8 @@ class Database {
     this.db
       .prepare(
         `INSERT INTO giveaways
-         (message_id, channel_id, guild_id, host_id, prize, winners, ends_at, ended, entries, cancelled, ping_on_end)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?)`
+         (message_id, channel_id, guild_id, host_id, prize, winners, ends_at, ended, entries, cancelled, ping_on_end, giveaway_settings)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?)`
       )
       .run(
         data.messageId,
@@ -281,7 +282,8 @@ class Database {
         data.winners,
         data.endsAt,
         JSON.stringify(data.entries || {}),
-        data.pingOnEnd ? 1 : 0
+        data.pingOnEnd ? 1 : 0,
+        data.settings ? JSON.stringify(data.settings) : null
       );
   }
 

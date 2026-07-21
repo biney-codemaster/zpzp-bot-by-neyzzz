@@ -31,7 +31,7 @@ const {
   postPanel,
   assertOwner,
 } = require('../services/ticketSetup');
-const { hasLevel } = require('../utils/permissions');
+const { parseDuration } = require('../utils/helpers');
 const { handlePollVote, handlePollEnd } = require('../services/polls');
 const {
   parseEntryMap,
@@ -42,15 +42,24 @@ const {
   getGiveawaySettings,
 } = require('../services/giveaways');
 const {
-  buildSetupEmbed: buildGiveawaySetupEmbed,
-  mainMenu: giveawayMainMenu,
-  backRow: giveawayBackRow,
-  rolePicker: giveawayRolePicker,
-  minAgeModal,
-  bonusEntriesModal,
-  pickerEmbed: giveawayPickerEmbed,
-  assertOwner: assertGiveawayOwner,
-} = require('../services/giveawaySetup');
+  buildCreateEmbed: buildGiveawayCreateEmbed,
+  mainMenu: giveawayCreateMenu,
+  backRow: giveawayCreateBackRow,
+  rolePicker: giveawayCreateRolePicker,
+  channelPicker: giveawayCreateChannelPicker,
+  prizeModal: giveawayPrizeModal,
+  durationModal: giveawayDurationModal,
+  winnersModal: giveawayWinnersModal,
+  minAgeModal: giveawayCreateMinAgeModal,
+  bonusEntriesModal: giveawayCreateBonusModal,
+  pickerEmbed: giveawayCreatePickerEmbed,
+  assertOwner: assertGiveawayCreateOwner,
+  getDraft,
+  setDraft,
+  clearDraft,
+  defaultDraft,
+  postGiveaway,
+} = require('../services/giveawayCreate');
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -104,7 +113,7 @@ async function handleGiveawayEnter(client, interaction) {
   }
 
   const guildData = client.db.ensureGuild(interaction.guild.id);
-  const settings = getGiveawaySettings(guildData);
+  const settings = getGiveawaySettings(guildData, giveaway);
   const fail = checkEligibility(interaction.member, settings);
   if (fail) {
     return interaction.reply({ embeds: [error(fail)], ephemeral: true });
@@ -165,7 +174,7 @@ async function handleGiveawayLeave(client, interaction) {
   });
 }
 
-async function handleGiveawaySetup(client, interaction) {
+async function handleGiveawayCreate(client, interaction) {
   const guildData = client.db.ensureGuild(interaction.guild.id);
   if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
     return interaction.reply({
@@ -174,8 +183,81 @@ async function handleGiveawaySetup(client, interaction) {
     });
   }
 
+  const refreshMenu = async (draft, ownerId) => {
+    if (!interaction.message?.editable) return;
+    await interaction.message.edit({
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
+    });
+  };
+
+  const getOrCreateDraft = (ownerId) => {
+    let draft = getDraft(client, interaction.guild.id, ownerId);
+    if (!draft) {
+      draft = defaultDraft(interaction.channel?.id);
+      setDraft(client, interaction.guild.id, ownerId, draft);
+    }
+    return draft;
+  };
+
   if (interaction.isModalSubmit()) {
-    if (interaction.customId === 'gsetup_min_age_modal') {
+    const ownerId = interaction.user.id;
+    const draft = getOrCreateDraft(ownerId);
+
+    if (interaction.customId === 'gcreate_prize_modal') {
+      const prize = interaction.fields.getTextInputValue('prize').trim();
+      if (!prize) {
+        return interaction.reply({
+          embeds: [error('Prize cannot be empty.')],
+          ephemeral: true,
+        });
+      }
+      draft.prize = prize.slice(0, 256);
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Prize set to **${draft.prize}**.`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+
+    if (interaction.customId === 'gcreate_duration_modal') {
+      const duration = interaction.fields.getTextInputValue('duration').trim();
+      if (!parseDuration(duration)) {
+        return interaction.reply({
+          embeds: [error('Invalid duration (e.g. `1h`, `2d`, `30m`).')],
+          ephemeral: true,
+        });
+      }
+      draft.duration = duration;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Duration set to **${duration}**.`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+
+    if (interaction.customId === 'gcreate_winners_modal') {
+      const winners = Math.floor(
+        Number(interaction.fields.getTextInputValue('winners'))
+      );
+      if (!winners || winners < 1) {
+        return interaction.reply({
+          embeds: [error('Winners must be a number >= 1.')],
+          ephemeral: true,
+        });
+      }
+      draft.winners = winners;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Winners set to **${winners}**.`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+
+    if (interaction.customId === 'gcreate_min_age_modal') {
       const days = Number(interaction.fields.getTextInputValue('days'));
       if (Number.isNaN(days) || days < 0) {
         return interaction.reply({
@@ -183,24 +265,16 @@ async function handleGiveawaySetup(client, interaction) {
           ephemeral: true,
         });
       }
-      client.db.updateGuild(interaction.guild.id, {
-        giveaway_min_account_days: days,
-      });
-      const data = client.db.ensureGuild(interaction.guild.id);
+      draft.minAccountDays = days;
+      setDraft(client, interaction.guild.id, ownerId, draft);
       await interaction.reply({
         embeds: [success(`Minimum account age set to **${days}** day(s).`)],
         ephemeral: true,
       });
-      if (interaction.message?.editable) {
-        await interaction.message.edit({
-          embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
-          components: giveawayMainMenu(interaction.user.id),
-        });
-      }
-      return;
+      return refreshMenu(draft, ownerId);
     }
 
-    if (interaction.customId === 'gsetup_bonus_entries_modal') {
+    if (interaction.customId === 'gcreate_bonus_entries_modal') {
       const amount = Number(interaction.fields.getTextInputValue('amount'));
       if (Number.isNaN(amount) || amount < 0) {
         return interaction.reply({
@@ -208,21 +282,13 @@ async function handleGiveawaySetup(client, interaction) {
           ephemeral: true,
         });
       }
-      client.db.updateGuild(interaction.guild.id, {
-        giveaway_bonus_entries: amount,
-      });
-      const data = client.db.ensureGuild(interaction.guild.id);
+      draft.bonusEntries = amount;
+      setDraft(client, interaction.guild.id, ownerId, draft);
       await interaction.reply({
         embeds: [success(`Bonus entries set to **+${amount}**.`)],
         ephemeral: true,
       });
-      if (interaction.message?.editable) {
-        await interaction.message.edit({
-          embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
-          components: giveawayMainMenu(interaction.user.id),
-        });
-      }
-      return;
+      return refreshMenu(draft, ownerId);
     }
     return;
   }
@@ -230,133 +296,194 @@ async function handleGiveawaySetup(client, interaction) {
   const parts = interaction.customId.split(':');
   const action = parts[0];
   const ownerId =
-    action === 'gsetup_role' ? parts[2] : parts[1];
+    action === 'gcreate_role' ? parts[2] : parts[1];
 
-  if (!assertGiveawayOwner(interaction, ownerId)) {
+  if (!assertGiveawayCreateOwner(interaction, ownerId)) {
     return interaction.reply({
       embeds: [error('Only the command author can use this menu.')],
       ephemeral: true,
     });
   }
 
-  if (action === 'gsetup_close') {
+  const draft = getOrCreateDraft(ownerId);
+
+  if (action === 'gcreate_close') {
+    clearDraft(client, interaction.guild.id, ownerId);
     return interaction.update({
       embeds: [
         new EmbedBuilder()
           .setColor(color())
-          .setDescription('Giveaway setup closed. Run `+gsetup` to open it again.'),
+          .setDescription('Giveaway creator closed. Run `+gcreate` to start again.'),
       ],
       components: [],
     });
   }
 
-  if (action === 'gsetup_back') {
-    const data = client.db.ensureGuild(interaction.guild.id);
+  if (action === 'gcreate_back') {
     return interaction.update({
-      embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
-      components: giveawayMainMenu(ownerId),
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
     });
   }
 
-  if (action === 'gsetup_menu' && interaction.isStringSelectMenu()) {
+  if (action === 'gcreate_menu' && interaction.isStringSelectMenu()) {
     const choice = interaction.values[0];
-    const data = client.db.ensureGuild(interaction.guild.id);
+
+    if (choice === 'prize') {
+      return interaction.showModal(giveawayPrizeModal(draft));
+    }
+
+    if (choice === 'duration') {
+      return interaction.showModal(giveawayDurationModal(draft));
+    }
+
+    if (choice === 'winners') {
+      return interaction.showModal(giveawayWinnersModal(draft));
+    }
+
+    if (choice === 'channel') {
+      return interaction.update({
+        embeds: [
+          giveawayCreatePickerEmbed(
+            'Post channel',
+            'Choose where the giveaway will be published.'
+          ),
+        ],
+        components: giveawayCreateChannelPicker(ownerId),
+      });
+    }
 
     if (choice === 'required_role') {
       return interaction.update({
         embeds: [
-          giveawayPickerEmbed(
+          giveawayCreatePickerEmbed(
             'Required role',
-            'Members need this role to enter giveaways.'
+            'Members need this role to enter.'
           ),
         ],
-        components: giveawayRolePicker(ownerId, 'required'),
+        components: giveawayCreateRolePicker(ownerId, 'required'),
       });
     }
 
     if (choice === 'bonus_role') {
       return interaction.update({
         embeds: [
-          giveawayPickerEmbed(
+          giveawayCreatePickerEmbed(
             'Bonus role',
             'Members with this role receive extra entries.'
           ),
         ],
-        components: giveawayRolePicker(ownerId, 'bonus'),
+        components: giveawayCreateRolePicker(ownerId, 'bonus'),
       });
     }
 
     if (choice === 'min_age') {
-      const settings = getGiveawaySettings(data);
-      return interaction.showModal(minAgeModal(settings.minAccountDays));
+      return interaction.showModal(giveawayCreateMinAgeModal(draft));
     }
 
     if (choice === 'bonus_entries') {
-      const settings = getGiveawaySettings(data);
-      return interaction.showModal(bonusEntriesModal(settings.bonusEntries));
+      return interaction.showModal(giveawayCreateBonusModal(draft));
     }
 
     if (choice === 'boosters') {
-      client.db.updateGuild(interaction.guild.id, {
-        giveaway_boosters_only: data.giveaway_boosters_only ? 0 : 1,
-      });
-      const updated = client.db.ensureGuild(interaction.guild.id);
+      draft.boostersOnly = !draft.boostersOnly;
+      setDraft(client, interaction.guild.id, ownerId, draft);
       return interaction.update({
-        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
-        components: giveawayMainMenu(ownerId),
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
       });
     }
 
     if (choice === 'ping') {
-      client.db.updateGuild(interaction.guild.id, {
-        giveaway_ping_on_end: data.giveaway_ping_on_end ? 0 : 1,
-      });
-      const updated = client.db.ensureGuild(interaction.guild.id);
+      draft.pingOnEnd = !draft.pingOnEnd;
+      setDraft(client, interaction.guild.id, ownerId, draft);
       return interaction.update({
-        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
-        components: giveawayMainMenu(ownerId),
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
       });
     }
 
     if (choice === 'clear_required') {
-      client.db.updateGuild(interaction.guild.id, {
-        giveaway_required_role: null,
-      });
-      const updated = client.db.ensureGuild(interaction.guild.id);
+      draft.requiredRole = null;
+      setDraft(client, interaction.guild.id, ownerId, draft);
       return interaction.update({
-        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
-        components: giveawayMainMenu(ownerId),
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
       });
     }
 
     if (choice === 'clear_bonus') {
-      client.db.updateGuild(interaction.guild.id, {
-        giveaway_bonus_role: null,
-        giveaway_bonus_entries: 0,
-      });
-      const updated = client.db.ensureGuild(interaction.guild.id);
+      draft.bonusRole = null;
+      draft.bonusEntries = 0;
+      setDraft(client, interaction.guild.id, ownerId, draft);
       return interaction.update({
-        embeds: [buildGiveawaySetupEmbed(interaction.guild, updated)],
-        components: giveawayMainMenu(ownerId),
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
+      });
+    }
+
+    if (choice === 'post') {
+      await interaction.deferUpdate();
+      const result = await postGiveaway(
+        client,
+        interaction.guild,
+        draft,
+        interaction.user
+      );
+
+      if (result.error) {
+        await interaction.editReply({
+          embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+          components: giveawayCreateMenu(ownerId),
+        });
+        return interaction.followUp({
+          embeds: [error(result.error)],
+          ephemeral: true,
+        });
+      }
+
+      clearDraft(client, interaction.guild.id, ownerId);
+      return interaction.editReply({
+        embeds: [
+          success(
+            [
+              `Giveaway posted in ${result.channel}.`,
+              `Message: ${result.message.url}`,
+            ].join('\n'),
+            'Giveaway created'
+          ),
+        ],
+        components: [],
       });
     }
   }
 
-  if (action === 'gsetup_role' && interaction.isRoleSelectMenu()) {
+  if (action === 'gcreate_role' && interaction.isRoleSelectMenu()) {
     const field = parts[1];
     const role = interaction.roles.first();
-    const key =
-      field === 'required'
-        ? 'giveaway_required_role'
-        : 'giveaway_bonus_role';
-    client.db.updateGuild(interaction.guild.id, { [key]: role.id });
-    const data = client.db.ensureGuild(interaction.guild.id);
+    if (field === 'required') draft.requiredRole = role.id;
+    if (field === 'bonus') draft.bonusRole = role.id;
+    setDraft(client, interaction.guild.id, ownerId, draft);
     await interaction.update({
-      embeds: [buildGiveawaySetupEmbed(interaction.guild, data)],
-      components: giveawayMainMenu(ownerId),
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
     });
     return interaction.followUp({
-      embeds: [success(`Set ${field === 'required' ? 'required' : 'bonus'} role to ${role}.`)],
+      embeds: [success(`Set ${field} role to ${role}.`)],
+      ephemeral: true,
+    });
+  }
+
+  if (action === 'gcreate_channel' && interaction.isChannelSelectMenu()) {
+    const channel = interaction.channels.first();
+    draft.channelId = channel.id;
+    setDraft(client, interaction.guild.id, ownerId, draft);
+    await interaction.update({
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
+    });
+    return interaction.followUp({
+      embeds: [success(`Giveaway will post in ${channel}.`)],
       ephemeral: true,
     });
   }
@@ -755,14 +882,20 @@ module.exports = {
 
     if (
       (interaction.isStringSelectMenu() ||
+        interaction.isChannelSelectMenu() ||
         interaction.isRoleSelectMenu() ||
         interaction.isButton() ||
         interaction.isModalSubmit()) &&
-      (interaction.customId.startsWith('gsetup_') ||
-        interaction.customId === 'gsetup_min_age_modal' ||
-        interaction.customId === 'gsetup_bonus_entries_modal')
+      (interaction.customId.startsWith('gcreate_') ||
+        [
+          'gcreate_prize_modal',
+          'gcreate_duration_modal',
+          'gcreate_winners_modal',
+          'gcreate_min_age_modal',
+          'gcreate_bonus_entries_modal',
+        ].includes(interaction.customId))
     ) {
-      return handleGiveawaySetup(client, interaction);
+      return handleGiveawayCreate(client, interaction);
     }
 
     if (interaction.isButton() && interaction.customId === 'giveaway_enter') {
