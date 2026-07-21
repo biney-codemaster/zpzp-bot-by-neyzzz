@@ -231,11 +231,6 @@ async function endGiveaway(client, messageId, { ping = null } = {}) {
   const giveaway = client.db.getGiveaway(messageId);
   if (!giveaway || giveaway.ended || giveaway.cancelled) return null;
 
-  client.db.updateGiveaway(messageId, {
-    ended: 1,
-    winner_ids: JSON.stringify(winners),
-  });
-
   const channel = await client.channels.fetch(giveaway.channel_id).catch(() => null);
   if (!channel) return null;
 
@@ -243,6 +238,11 @@ async function endGiveaway(client, messageId, { ping = null } = {}) {
   const map = parseEntryMap(giveaway.entries);
   const { entries, participants } = entryStats(map);
   const winners = pickWinners(map, giveaway.winners);
+
+  client.db.updateGiveaway(messageId, {
+    ended: 1,
+    winner_ids: JSON.stringify(winners),
+  });
 
   const host = await client.users.fetch(giveaway.host_id).catch(() => null);
   const guildData = client.db.ensureGuild(giveaway.guild_id);
