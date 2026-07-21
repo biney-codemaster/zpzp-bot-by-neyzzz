@@ -181,6 +181,32 @@ async function fetchTriviaQuestion() {
   ]);
 }
 
+async function fetchBlackdickImage() {
+  return firstOk([
+    async () => {
+      const data = await fetchJson(
+        'https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&limit=50&tags=black_penis+-animated+-video'
+      );
+      if (!Array.isArray(data) || !data.length) throw new Error('rule34 empty');
+      const post = data[Math.floor(Math.random() * data.length)];
+      const url = post?.file_url || post?.sample_url;
+      if (!url) throw new Error('rule34 no url');
+      return { url, title: 'NSFW', footer: 'Rule34' };
+    },
+    async () => {
+      const data = await fetchJson(
+        'https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=50&tags=black_penis+-animated+-video'
+      );
+      const posts = data?.post || data;
+      if (!Array.isArray(posts) || !posts.length) throw new Error('gelbooru empty');
+      const post = posts[Math.floor(Math.random() * posts.length)];
+      const url = post?.file_url || post?.sample_url;
+      if (!url) throw new Error('gelbooru no url');
+      return { url, title: 'NSFW', footer: 'Gelbooru' };
+    },
+  ]);
+}
+
 function imageEmbed({ url, title, footer }) {
   return new EmbedBuilder()
     .setColor(color())
@@ -195,6 +221,7 @@ module.exports = {
   fetchCatImage,
   fetchDogImage,
   fetchMeme,
+  fetchBlackdickImage,
   fetchFact,
   fetchQuote,
   fetchTriviaQuestion,
