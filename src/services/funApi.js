@@ -200,15 +200,13 @@ async function fetchBlackdickImage() {
       return { url, title: 'NSFW', footer: 'Rule34' };
     },
     async () => {
+      const types = ['pgif', '4k', 'gonewild', 'ass', 'boobs', 'anal'];
+      const type = types[Math.floor(Math.random() * types.length)];
       const data = await fetchJson(
-        'https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=50&tags=black_penis+-animated+-video'
+        `https://nekobot.xyz/api/image?type=${type}`
       );
-      const posts = data?.post || data;
-      if (!Array.isArray(posts) || !posts.length) throw new Error('gelbooru empty');
-      const post = posts[Math.floor(Math.random() * posts.length)];
-      const url = post?.file_url || post?.sample_url;
-      if (!url) throw new Error('gelbooru no url');
-      return { url, title: 'NSFW', footer: 'Gelbooru' };
+      if (!data?.success || !data?.message) throw new Error('nekobot fail');
+      return { url: data.message, title: 'NSFW', footer: 'NekoBot' };
     },
   ]);
 }
