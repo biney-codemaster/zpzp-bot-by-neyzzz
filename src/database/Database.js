@@ -145,6 +145,8 @@ class Database {
     this.#ensureColumn('guilds', 'automod_antispam_action', "TEXT NOT NULL DEFAULT 'timeout'");
     this.#ensureColumn('guilds', 'automod_badwords_action', "TEXT NOT NULL DEFAULT 'delete'");
     this.#ensureColumn('guilds', 'automod_timeout_seconds', 'INTEGER NOT NULL DEFAULT 30');
+    this.#ensureColumn('guilds', 'ticket_panel_title', 'TEXT');
+    this.#ensureColumn('guilds', 'ticket_panel_description', 'TEXT');
   }
 
   #ensureColumn(table, column, type) {

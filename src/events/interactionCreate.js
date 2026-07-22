@@ -16,9 +16,12 @@ const {
   isTicketStaff,
   openTicket,
   finalizeClose,
-  sendStandaloneTranscript,
   closeConfirmComponents,
   userSelectRow,
+  renameModal,
+  addUserToTicket,
+  removeUserFromTicket,
+  renameTicket,
 } = require('../services/tickets');
 const {
   buildSetupEmbed,
@@ -27,6 +30,7 @@ const {
   supportPicker,
   logsPicker,
   panelPicker,
+  panelTextModal,
   pickerEmbed,
   postPanel,
   assertOwner,
@@ -1196,8 +1200,37 @@ async function handleTicketInteractions(client, interaction) {
     return finalizeClose(client, interaction, reason);
   }
 
-  if (interaction.isButton() && id === 'ticket_transcript') {
-    return sendStandaloneTranscript(client, interaction);
+  if (interaction.isButton() && id === 'ticket_rename') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    const ticket = client.db.getTicket(interaction.channel.id);
+    if (!ticket || ticket.closed) {
+      return interaction.reply({
+        embeds: [error('This is not an open ticket.')],
+        ephemeral: true,
+      });
+    }
+    return interaction.showModal(renameModal(interaction.channel.name));
+  }
+
+  if (interaction.isModalSubmit() && id === 'ticket_rename_modal') {
+    if (!(await requireTicketStaff(client, interaction))) return;
+    const raw = interaction.fields.getTextInputValue('ticket_name');
+    const result = await renameTicket(
+      client,
+      interaction.channel,
+      interaction.user,
+      raw
+    );
+    if (!result.ok) {
+      return interaction.reply({
+        embeds: [error(result.message)],
+        ephemeral: true,
+      });
+    }
+    return interaction.reply({
+      embeds: [success(`Ticket renamed to \`${result.name}\`.`)],
+      ephemeral: true,
+    });
   }
 
   if (interaction.isButton() && id === 'ticket_add') {
@@ -1220,33 +1253,19 @@ async function handleTicketInteractions(client, interaction) {
 
   if (interaction.isUserSelectMenu() && id === 'ticket_add_select') {
     if (!(await requireTicketStaff(client, interaction))) return;
-    const ticket = client.db.getTicket(interaction.channel.id);
-    if (!ticket || ticket.closed) {
-      return interaction.update({
-        embeds: [error('This is not an open ticket.')],
-        components: [],
-      });
-    }
-
     const user = interaction.users.first();
-    if (!user || user.bot) {
+    const result = await addUserToTicket(
+      client,
+      interaction.channel,
+      interaction.user,
+      user
+    );
+    if (!result.ok) {
       return interaction.update({
-        embeds: [error('Invalid user.')],
+        embeds: [error(result.message)],
         components: [],
       });
     }
-
-    await interaction.channel.permissionOverwrites.edit(user.id, {
-      ViewChannel: true,
-      SendMessages: true,
-      AttachFiles: true,
-      ReadMessageHistory: true,
-    });
-
-    await interaction.channel
-      .send({ embeds: [success(`${user} was added to the ticket by ${interaction.user}.`)] })
-      .catch(() => null);
-
     return interaction.update({
       embeds: [success(`${user} added.`)],
       components: [],
@@ -1255,42 +1274,19 @@ async function handleTicketInteractions(client, interaction) {
 
   if (interaction.isUserSelectMenu() && id === 'ticket_remove_select') {
     if (!(await requireTicketStaff(client, interaction))) return;
-    const ticket = client.db.getTicket(interaction.channel.id);
-    if (!ticket || ticket.closed) {
-      return interaction.update({
-        embeds: [error('This is not an open ticket.')],
-        components: [],
-      });
-    }
-
     const user = interaction.users.first();
-    if (!user) {
+    const result = await removeUserFromTicket(
+      client,
+      interaction.channel,
+      interaction.user,
+      user
+    );
+    if (!result.ok) {
       return interaction.update({
-        embeds: [error('Invalid user.')],
+        embeds: [error(result.message)],
         components: [],
       });
     }
-    if (user.id === ticket.user_id) {
-      return interaction.update({
-        embeds: [error('You cannot remove the ticket author.')],
-        components: [],
-      });
-    }
-    if (user.id === client.user.id) {
-      return interaction.update({
-        embeds: [error('You cannot remove the bot.')],
-        components: [],
-      });
-    }
-
-    await interaction.channel.permissionOverwrites.edit(user.id, {
-      ViewChannel: false,
-    });
-
-    await interaction.channel
-      .send({ embeds: [success(`${user} was removed from the ticket by ${interaction.user}.`)] })
-      .catch(() => null);
-
     return interaction.update({
       embeds: [success(`${user} removed.`)],
       components: [],
@@ -1301,6 +1297,47 @@ async function handleTicketInteractions(client, interaction) {
 }
 
 async function handleTicketSetup(client, interaction) {
+  if (
+    interaction.isModalSubmit() &&
+    interaction.customId === 'tsetup_panel_text_modal'
+  ) {
+    const guildData = client.db.ensureGuild(interaction.guild.id);
+    if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+      return interaction.reply({
+        embeds: [error('Admin permission required.')],
+        ephemeral: true,
+      });
+    }
+
+    const title = interaction.fields.getTextInputValue('panel_title').trim();
+    const description = interaction.fields
+      .getTextInputValue('panel_description')
+      .trim();
+    if (!title || !description) {
+      return interaction.reply({
+        embeds: [error('Title and description are required.')],
+        ephemeral: true,
+      });
+    }
+
+    client.db.updateGuild(interaction.guild.id, {
+      ticket_panel_title: title,
+      ticket_panel_description: description,
+    });
+    const data = client.db.ensureGuild(interaction.guild.id);
+    return interaction
+      .update({
+        embeds: [buildSetupEmbed(interaction.guild, data)],
+        components: mainMenu(interaction.user.id),
+      })
+      .catch(async () => {
+        await interaction.reply({
+          embeds: [success('Panel text updated.')],
+          ephemeral: true,
+        });
+      });
+  }
+
   const [action, ownerId] = interaction.customId.split(':');
   if (!assertOwner(interaction, ownerId)) {
     return interaction.reply({
@@ -1382,6 +1419,11 @@ async function handleTicketSetup(client, interaction) {
         embeds: [buildSetupEmbed(interaction.guild, data)],
         components: mainMenu(ownerId),
       });
+    }
+
+    if (choice === 'panel_text') {
+      const data = client.db.ensureGuild(interaction.guild.id);
+      return interaction.showModal(panelTextModal(data));
     }
 
     if (choice === 'panel') {
@@ -2069,8 +2111,10 @@ module.exports = {
       (interaction.isStringSelectMenu() ||
         interaction.isChannelSelectMenu() ||
         interaction.isRoleSelectMenu() ||
-        interaction.isButton()) &&
-      interaction.customId.startsWith('tsetup_')
+        interaction.isButton() ||
+        interaction.isModalSubmit()) &&
+      (interaction.customId.startsWith('tsetup_') ||
+        interaction.customId === 'tsetup_panel_text_modal')
     ) {
       return handleTicketSetup(client, interaction);
     }
@@ -2172,7 +2216,8 @@ module.exports = {
       'ticket_close_cancel',
       'ticket_close_reason',
       'ticket_close_modal',
-      'ticket_transcript',
+      'ticket_rename',
+      'ticket_rename_modal',
       'ticket_add',
       'ticket_remove',
       'ticket_add_select',

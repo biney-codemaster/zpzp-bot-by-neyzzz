@@ -1,4 +1,8 @@
 const config = require('../../config');
+const {
+  DEFAULT_PANEL_TITLE,
+  DEFAULT_PANEL_DESCRIPTION,
+} = require('./tickets');
 
 const DEFAULT_WELCOME_MESSAGE =
   'Welcome {user} to **{server}**! You are member #{count}.';
@@ -40,6 +44,8 @@ function fullConfigReset() {
     ticket_category: null,
     ticket_log: null,
     ticket_support_role: null,
+    ticket_panel_title: DEFAULT_PANEL_TITLE,
+    ticket_panel_description: DEFAULT_PANEL_DESCRIPTION,
     ...DEFAULT_AUTOMOD,
     giveaway_required_role: null,
     giveaway_min_account_days: null,

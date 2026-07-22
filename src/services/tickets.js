@@ -4,7 +4,10 @@ const {
   ButtonStyle,
   ChannelType,
   EmbedBuilder,
+  ModalBuilder,
   PermissionFlagsBits,
+  TextInputBuilder,
+  TextInputStyle,
   UserSelectMenuBuilder,
 } = require('discord.js');
 const config = require('../../config');
@@ -15,6 +18,14 @@ const { buildTranscript } = require('../utils/transcript');
 const { formatDuration } = require('../utils/helpers');
 
 const openCooldowns = new Map();
+
+const DEFAULT_PANEL_TITLE = 'Support';
+const DEFAULT_PANEL_DESCRIPTION = [
+  'Need help? Open a private support ticket.',
+  '',
+  'One open ticket per user.',
+  'Staff will respond as soon as possible.',
+].join('\n');
 
 function isTicketStaff(member, guildData, ownerIds = []) {
   if (!member) return false;
@@ -32,6 +43,16 @@ function sanitizeChannelName(username) {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
   return (base || 'ticket-user').slice(0, 90);
+}
+
+function normalizeTicketName(input) {
+  const cleaned = String(input || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 90);
+  return cleaned || null;
 }
 
 function panelComponents() {
@@ -62,13 +83,12 @@ function ticketControls() {
     .setStyle(ButtonStyle.Secondary);
   applyComponentEmoji(remove, 'ticketRemove');
 
-  const transcript = new ButtonBuilder()
-    .setCustomId('ticket_transcript')
-    .setLabel('Transcript')
+  const rename = new ButtonBuilder()
+    .setCustomId('ticket_rename')
+    .setLabel('Rename')
     .setStyle(ButtonStyle.Secondary);
-  applyComponentEmoji(transcript, 'ticketTranscript');
 
-  return [new ActionRowBuilder().addComponents(close, add, remove, transcript)];
+  return [new ActionRowBuilder().addComponents(close, add, remove, rename)];
 }
 
 function closeConfirmComponents() {
@@ -90,6 +110,23 @@ function closeConfirmComponents() {
   applyComponentEmoji(cancel, 'ticketCancel');
 
   return [new ActionRowBuilder().addComponents(confirm, reason, cancel)];
+}
+
+function renameModal(currentName = '') {
+  return new ModalBuilder()
+    .setCustomId('ticket_rename_modal')
+    .setTitle('Rename ticket')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('ticket_name')
+          .setLabel('Channel name')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(90)
+          .setValue(String(currentName || '').slice(0, 90))
+      )
+    );
 }
 
 async function sendTicketLog(client, guild, { title, fields, files = [] }) {
@@ -131,7 +168,6 @@ async function openTicket(client, interaction) {
     });
   }
 
-  // Also respect recent close cooldown using DB
   const lastClosed = client.db.getLastClosedTicket(interaction.guild.id, interaction.user.id);
   if (lastClosed?.closed_at) {
     const sinceClose = lastClosed.closed_at + config.tickets.openCooldownMs - Date.now();
@@ -200,7 +236,7 @@ async function openTicket(client, interaction) {
             `Hey ${interaction.user} — describe your issue.`,
             'Staff will help you here.',
             '',
-            'Controls below are **staff only** (except waiting for a reply).',
+            'Controls below are **staff only**.',
           ].join('\n')
         )
         .addFields(
@@ -226,6 +262,79 @@ async function openTicket(client, interaction) {
   });
 }
 
+/**
+ * Core close logic shared by button flow and +tclose.
+ * @returns {{ ok: true } | { ok: false, message: string }}
+ */
+async function performClose(client, { guild, channel, closer, reason = null }) {
+  const ticket = client.db.getTicket(channel.id);
+  if (!ticket || ticket.closed) {
+    return { ok: false, message: 'This is not an open ticket.' };
+  }
+
+  const g = client.db.ensureGuild(guild.id);
+  let transcript;
+  try {
+    transcript = await buildTranscript(channel, {
+      ticket,
+      closedBy: closer,
+      reason,
+    });
+  } catch (err) {
+    console.error('[transcript]', err);
+  }
+
+  client.db.closeTicket(channel.id, {
+    closedBy: closer.id,
+    reason,
+  });
+
+  const files = transcript ? [transcript] : [];
+
+  await sendTicketLog(client, guild, {
+    title: 'Ticket closed',
+    fields: [
+      { name: 'Channel', value: `#${channel.name}`, inline: true },
+      { name: 'Author', value: `<@${ticket.user_id}>`, inline: true },
+      { name: 'Closed by', value: `${closer}`, inline: true },
+      { name: 'Reason', value: reason || 'None' },
+    ],
+    files,
+  });
+
+  const author = await client.users.fetch(ticket.user_id).catch(() => null);
+  if (author && transcript) {
+    await author
+      .send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(color())
+            .setTitle(withEmoji('tickets', 'Ticket closed'))
+            .setDescription(
+              `Your support ticket in **${guild.name}** was closed.\nReason: ${reason || 'None'}`
+            )
+            .setTimestamp(),
+        ],
+        files: [transcript],
+      })
+      .catch(() => null);
+  }
+
+  setTimeout(async () => {
+    await sendTicketLog(client, guild, {
+      title: 'Ticket deleted',
+      fields: [
+        { name: 'Channel', value: `#${channel.name}`, inline: true },
+        { name: 'Author', value: `<@${ticket.user_id}>`, inline: true },
+        { name: 'Closed by', value: `${closer}`, inline: true },
+      ],
+    });
+    await channel.delete('Ticket closed').catch(() => null);
+  }, config.tickets.deleteDelayMs);
+
+  return { ok: true, ticket };
+}
+
 async function finalizeClose(client, interaction, reason = null) {
   const ticket = client.db.getTicket(interaction.channel.id);
   if (!ticket || ticket.closed) {
@@ -249,55 +358,18 @@ async function finalizeClose(client, interaction, reason = null) {
     await interaction.deferReply();
   }
 
-  const channel = interaction.channel;
-  let transcript;
-  try {
-    transcript = await buildTranscript(channel, {
-      ticket,
-      closedBy: interaction.user,
-      reason,
-    });
-  } catch (err) {
-    console.error('[transcript]', err);
-  }
-
-  client.db.closeTicket(channel.id, {
-    closedBy: interaction.user.id,
+  const result = await performClose(client, {
+    guild: interaction.guild,
+    channel: interaction.channel,
+    closer: interaction.user,
     reason,
   });
 
-  const files = transcript ? [transcript] : [];
-
-  await sendTicketLog(client, interaction.guild, {
-    title: 'Ticket closed',
-    fields: [
-      { name: 'Channel', value: `#${channel.name}`, inline: true },
-      { name: 'Author', value: `<@${ticket.user_id}>`, inline: true },
-      { name: 'Closed by', value: `${interaction.user}`, inline: true },
-      { name: 'Reason', value: reason || 'None' },
-    ],
-    files,
-  });
-
-  const author = await client.users.fetch(ticket.user_id).catch(() => null);
-  if (author && transcript) {
-    await author
-      .send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(color())
-            .setTitle(withEmoji('tickets', 'Ticket closed'))
-            .setDescription(
-              `Your support ticket in **${interaction.guild.name}** was closed.\nReason: ${reason || 'None'}`
-            )
-            .setTimestamp(),
-        ],
-        files: [transcript],
-      })
-      .catch(() => null);
+  if (!result.ok) {
+    return interaction.editReply({ embeds: [error(result.message)] });
   }
 
-  await interaction.editReply({
+  return interaction.editReply({
     embeds: [
       success(
         `Ticket closed. Channel deletes in ${Math.floor(config.tickets.deleteDelayMs / 1000)}s.`
@@ -305,54 +377,83 @@ async function finalizeClose(client, interaction, reason = null) {
     ],
     components: [],
   });
-
-  setTimeout(async () => {
-    await sendTicketLog(client, interaction.guild, {
-      title: 'Ticket deleted',
-      fields: [
-        { name: 'Channel', value: `#${channel.name}`, inline: true },
-        { name: 'Author', value: `<@${ticket.user_id}>`, inline: true },
-        { name: 'Closed by', value: `${interaction.user}`, inline: true },
-      ],
-    });
-    await channel.delete('Ticket closed').catch(() => null);
-  }, config.tickets.deleteDelayMs);
 }
 
-async function sendStandaloneTranscript(client, interaction) {
-  const ticket = client.db.getTicket(interaction.channel.id);
-  if (!ticket) {
-    return interaction.reply({
-      embeds: [error('This is not a ticket channel.')],
-      ephemeral: true,
-    });
+async function addUserToTicket(client, channel, actor, user) {
+  const ticket = client.db.getTicket(channel.id);
+  if (!ticket || ticket.closed) {
+    return { ok: false, message: 'This is not an open ticket.' };
+  }
+  if (!user || user.bot) {
+    return { ok: false, message: 'Invalid user.' };
   }
 
-  const g = client.db.ensureGuild(interaction.guild.id);
-  if (!isTicketStaff(interaction.member, g, client.config.ownerIds)) {
-    return interaction.reply({
-      embeds: [error('Only staff can generate transcripts.')],
-      ephemeral: true,
-    });
+  await channel.permissionOverwrites.edit(user.id, {
+    ViewChannel: true,
+    SendMessages: true,
+    AttachFiles: true,
+    ReadMessageHistory: true,
+  });
+
+  await channel
+    .send({ embeds: [success(`${user} was added to the ticket by ${actor}.`)] })
+    .catch(() => null);
+
+  return { ok: true };
+}
+
+async function removeUserFromTicket(client, channel, actor, user) {
+  const ticket = client.db.getTicket(channel.id);
+  if (!ticket || ticket.closed) {
+    return { ok: false, message: 'This is not an open ticket.' };
+  }
+  if (!user) {
+    return { ok: false, message: 'Invalid user.' };
+  }
+  if (user.id === ticket.user_id) {
+    return { ok: false, message: 'You cannot remove the ticket author.' };
+  }
+  if (user.id === client.user.id) {
+    return { ok: false, message: 'You cannot remove the bot.' };
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await channel.permissionOverwrites.edit(user.id, {
+    ViewChannel: false,
+  });
+
+  await channel
+    .send({ embeds: [success(`${user} was removed from the ticket by ${actor}.`)] })
+    .catch(() => null);
+
+  return { ok: true };
+}
+
+async function renameTicket(client, channel, actor, rawName) {
+  const ticket = client.db.getTicket(channel.id);
+  if (!ticket || ticket.closed) {
+    return { ok: false, message: 'This is not an open ticket.' };
+  }
+
+  const name = normalizeTicketName(rawName);
+  if (!name) {
+    return {
+      ok: false,
+      message: 'Invalid name. Use letters, numbers, `-` or `_` (max 90).',
+    };
+  }
+
   try {
-    const file = await buildTranscript(interaction.channel, {
-      ticket,
-      closedBy: interaction.user,
-      reason: 'Manual transcript',
-    });
-    return interaction.editReply({
-      embeds: [success('Transcript generated.')],
-      files: [file],
-    });
+    await channel.setName(name, `Renamed by ${actor.tag}`);
   } catch (err) {
-    console.error('[transcript]', err);
-    return interaction.editReply({
-      embeds: [error('Failed to generate transcript.')],
-    });
+    console.error('[ticket:rename]', err);
+    return { ok: false, message: 'Failed to rename this channel. Check my permissions.' };
   }
+
+  await channel
+    .send({ embeds: [success(`Ticket renamed to \`${name}\` by ${actor}.`)] })
+    .catch(() => null);
+
+  return { ok: true, name };
 }
 
 function userSelectRow(customId, placeholder) {
@@ -365,14 +466,32 @@ function userSelectRow(customId, placeholder) {
   );
 }
 
+function getPanelTitle(guildData) {
+  return guildData.ticket_panel_title || DEFAULT_PANEL_TITLE;
+}
+
+function getPanelDescription(guildData) {
+  return guildData.ticket_panel_description || DEFAULT_PANEL_DESCRIPTION;
+}
+
 module.exports = {
   isTicketStaff,
   panelComponents,
   ticketControls,
   closeConfirmComponents,
+  renameModal,
   openTicket,
   finalizeClose,
-  sendStandaloneTranscript,
+  performClose,
+  addUserToTicket,
+  removeUserFromTicket,
+  renameTicket,
   sendTicketLog,
   userSelectRow,
+  sanitizeChannelName,
+  normalizeTicketName,
+  DEFAULT_PANEL_TITLE,
+  DEFAULT_PANEL_DESCRIPTION,
+  getPanelTitle,
+  getPanelDescription,
 };
