@@ -34,7 +34,7 @@ Use Discord custom emoji format `<:name:id>` / `<a:name:id>`, or leave `null`.
 
 | Level | Who |
 |---|---|
-| `owner` | `OWNER_IDS` (env) + owners added with `+owners add` |
+| `owner` | `OWNER_IDS` (env) + owners added with `+addowner` |
 | `mod` | Bot mod role (`+setmodrole`) |
 | `user` | Everyone |
 
@@ -42,8 +42,8 @@ Config / tickets / giveaways require **bot owner**. Moderation uses the mod role
 
 ```text
 +owners
-+owners add @user
-+owners remove @user
++addowner @user
++removeowner @user
 +setmodrole @Mod
 +setmodlog #logs
 ```
