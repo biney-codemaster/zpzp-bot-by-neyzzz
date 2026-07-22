@@ -95,11 +95,49 @@ class Database {
         extra TEXT,
         created_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS polls (
+        message_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        guild_id TEXT NOT NULL,
+        author_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        options TEXT NOT NULL,
+        votes TEXT NOT NULL DEFAULT '{}',
+        ended INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS fun_stats (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        rps_wins INTEGER NOT NULL DEFAULT 0,
+        rps_losses INTEGER NOT NULL DEFAULT 0,
+        rps_ties INTEGER NOT NULL DEFAULT 0,
+        trivia_correct INTEGER NOT NULL DEFAULT 0,
+        trivia_wrong INTEGER NOT NULL DEFAULT 0,
+        ttt_wins INTEGER NOT NULL DEFAULT 0,
+        ttt_losses INTEGER NOT NULL DEFAULT 0,
+        hangman_wins INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (guild_id, user_id)
+      );
     `);
 
     this.#ensureColumn('tickets', 'closed_by', 'TEXT');
     this.#ensureColumn('tickets', 'close_reason', 'TEXT');
     this.#ensureColumn('tickets', 'closed_at', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_required_role', 'TEXT');
+    this.#ensureColumn('guilds', 'giveaway_min_account_days', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_boosters_only', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_bonus_role', 'TEXT');
+    this.#ensureColumn('guilds', 'giveaway_bonus_entries', 'INTEGER');
+    this.#ensureColumn('guilds', 'giveaway_ping_on_end', 'INTEGER');
+    this.#ensureColumn('giveaways', 'cancelled', 'INTEGER NOT NULL DEFAULT 0');
+    this.#ensureColumn('giveaways', 'ping_on_end', 'INTEGER');
+    this.#ensureColumn('giveaways', 'winner_ids', 'TEXT');
+    this.#ensureColumn('giveaways', 'giveaway_settings', 'TEXT');
+    this.#ensureColumn('fun_stats', 'c4_wins', 'INTEGER NOT NULL DEFAULT 0');
+    this.#ensureColumn('fun_stats', 'c4_losses', 'INTEGER NOT NULL DEFAULT 0');
   }
 
   #ensureColumn(table, column, type) {
@@ -234,8 +272,8 @@ class Database {
     this.db
       .prepare(
         `INSERT INTO giveaways
-         (message_id, channel_id, guild_id, host_id, prize, winners, ends_at, ended, entries)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
+         (message_id, channel_id, guild_id, host_id, prize, winners, ends_at, ended, entries, cancelled, ping_on_end, giveaway_settings)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?)`
       )
       .run(
         data.messageId,
@@ -245,7 +283,9 @@ class Database {
         data.prize,
         data.winners,
         data.endsAt,
-        JSON.stringify(data.entries || [])
+        JSON.stringify(data.entries || {}),
+        data.pingOnEnd ? 1 : 0,
+        data.settings ? JSON.stringify(data.settings) : null
       );
   }
 
@@ -254,12 +294,14 @@ class Database {
       .prepare('SELECT * FROM giveaways WHERE message_id = ?')
       .get(messageId);
     if (!row) return null;
-    return { ...row, entries: JSON.parse(row.entries || '[]') };
+    return { ...row, entries: row.entries };
   }
 
   updateGiveaway(messageId, data) {
     const payload = { ...data };
-    if (payload.entries) payload.entries = JSON.stringify(payload.entries);
+    if (payload.entries && typeof payload.entries === 'object') {
+      payload.entries = JSON.stringify(payload.entries);
+    }
     const keys = Object.keys(payload);
     const sets = keys.map((k) => `${k} = ?`).join(', ');
     this.db
@@ -269,9 +311,16 @@ class Database {
 
   getActiveGiveaways() {
     return this.db
-      .prepare('SELECT * FROM giveaways WHERE ended = 0')
-      .all()
-      .map((r) => ({ ...r, entries: JSON.parse(r.entries || '[]') }));
+      .prepare('SELECT * FROM giveaways WHERE ended = 0 AND cancelled = 0')
+      .all();
+  }
+
+  getActiveGiveawaysByGuild(guildId) {
+    return this.db
+      .prepare(
+        'SELECT * FROM giveaways WHERE guild_id = ? AND ended = 0 AND cancelled = 0 ORDER BY ends_at ASC'
+      )
+      .all(guildId);
   }
 
   setAfk(guildId, userId, reason) {
@@ -310,8 +359,120 @@ class Database {
       .all(Date.now());
   }
 
+  getUserReminders(guildId, userId) {
+    return this.db
+      .prepare(
+        `SELECT * FROM reminders
+         WHERE guild_id = ? AND user_id = ? AND sent = 0
+         ORDER BY ends_at ASC`
+      )
+      .all(guildId, userId);
+  }
+
+  getReminder(id) {
+    return this.db.prepare('SELECT * FROM reminders WHERE id = ?').get(id);
+  }
+
+  cancelReminder(id, userId) {
+    return this.db
+      .prepare(
+        'DELETE FROM reminders WHERE id = ? AND user_id = ? AND sent = 0'
+      )
+      .run(id, userId).changes;
+  }
+
   markReminderSent(id) {
     this.db.prepare('UPDATE reminders SET sent = 1 WHERE id = ?').run(id);
+  }
+
+  createPoll(data) {
+    this.db
+      .prepare(
+        `INSERT INTO polls
+         (message_id, channel_id, guild_id, author_id, question, options, votes, ended, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, '{}', 0, ?)`
+      )
+      .run(
+        data.messageId,
+        data.channelId,
+        data.guildId,
+        data.authorId,
+        data.question,
+        JSON.stringify(data.options),
+        Date.now()
+      );
+  }
+
+  getPoll(messageId) {
+    const row = this.db
+      .prepare('SELECT * FROM polls WHERE message_id = ?')
+      .get(messageId);
+    if (!row) return null;
+    return {
+      ...row,
+      options: JSON.parse(row.options || '[]'),
+      votes: JSON.parse(row.votes || '{}'),
+    };
+  }
+
+  updatePoll(messageId, data) {
+    const payload = { ...data };
+    if (payload.options) payload.options = JSON.stringify(payload.options);
+    if (payload.votes) payload.votes = JSON.stringify(payload.votes);
+    const keys = Object.keys(payload);
+    if (!keys.length) return;
+    const sets = keys.map((k) => `${k} = ?`).join(', ');
+    this.db
+      .prepare(`UPDATE polls SET ${sets} WHERE message_id = ?`)
+      .run(...keys.map((k) => payload[k]), messageId);
+  }
+
+  ensureFunStats(guildId, userId) {
+    this.db
+      .prepare('INSERT OR IGNORE INTO fun_stats (guild_id, user_id) VALUES (?, ?)')
+      .run(guildId, userId);
+  }
+
+  addFunStat(guildId, userId, field, amount = 1) {
+    const allowed = [
+      'rps_wins',
+      'rps_losses',
+      'rps_ties',
+      'trivia_correct',
+      'trivia_wrong',
+      'ttt_wins',
+      'ttt_losses',
+      'hangman_wins',
+      'c4_wins',
+      'c4_losses',
+    ];
+    if (!allowed.includes(field)) return;
+    this.ensureFunStats(guildId, userId);
+    this.db
+      .prepare(
+        `UPDATE fun_stats SET ${field} = ${field} + ? WHERE guild_id = ? AND user_id = ?`
+      )
+      .run(amount, guildId, userId);
+  }
+
+  getFunStats(guildId, userId) {
+    this.ensureFunStats(guildId, userId);
+    return this.db
+      .prepare('SELECT * FROM fun_stats WHERE guild_id = ? AND user_id = ?')
+      .get(guildId, userId);
+  }
+
+  getFunLeaderboard(guildId, limit = 10) {
+    return this.db
+      .prepare(
+        `SELECT *,
+         (rps_wins * 2 + trivia_correct * 3 + ttt_wins * 5 + hangman_wins * 4 + c4_wins * 5) AS score
+         FROM fun_stats
+         WHERE guild_id = ?
+         ORDER BY score DESC, rps_wins DESC, trivia_correct DESC
+         LIMIT ?`
+      )
+      .all(guildId, limit);
   }
 }
 

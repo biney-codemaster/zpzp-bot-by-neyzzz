@@ -32,6 +32,632 @@ const {
   assertOwner,
 } = require('../services/ticketSetup');
 const { hasLevel } = require('../utils/permissions');
+const { parseDuration } = require('../utils/helpers');
+const { handlePollVote, handlePollEnd } = require('../services/polls');
+const {
+  parseEntryMap,
+  entryStats,
+  checkEligibility,
+  entryWeight,
+  refreshGiveawayMessage,
+  getGiveawaySettings,
+} = require('../services/giveaways');
+const {
+  getTttGame,
+  setTttGame,
+  clearTttGame,
+  renderBoard,
+  buildTttComponents,
+  buildTttEmbed,
+  checkTttWinner,
+  botMove,
+} = require('../services/funGames');
+const {
+  getC4Game,
+  setC4Game,
+  clearC4Game,
+  renderBoard: renderC4Board,
+  buildC4Components,
+  buildC4Embed,
+  dropPiece,
+  checkWinner: checkC4Winner,
+  isBoardFull,
+  botMove: c4BotMove,
+  RED,
+  YELLOW,
+} = require('../services/connect4');
+const {
+  buildCreateEmbed: buildGiveawayCreateEmbed,
+  mainMenu: giveawayCreateMenu,
+  backRow: giveawayCreateBackRow,
+  rolePicker: giveawayCreateRolePicker,
+  channelPicker: giveawayCreateChannelPicker,
+  prizeModal: giveawayPrizeModal,
+  durationModal: giveawayDurationModal,
+  winnersModal: giveawayWinnersModal,
+  minAgeModal: giveawayCreateMinAgeModal,
+  bonusEntriesModal: giveawayCreateBonusModal,
+  pickerEmbed: giveawayCreatePickerEmbed,
+  assertOwner: assertGiveawayCreateOwner,
+  getDraft,
+  setDraft,
+  clearDraft,
+  defaultDraft,
+  postGiveaway,
+} = require('../services/giveawayCreate');
+
+async function handleConnect4(client, interaction) {
+  if (!interaction.isButton() || !interaction.guild) return;
+
+  const id = interaction.customId;
+  if (
+    id !== 'c4_accept' &&
+    id !== 'c4_decline' &&
+    id !== 'c4_quit' &&
+    !id.startsWith('c4_drop:')
+  ) {
+    return;
+  }
+
+  const guildId = interaction.guild.id;
+  const channelId = interaction.channel.id;
+  const game = getC4Game(client, guildId, channelId);
+
+  if (!game) {
+    return interaction.reply({
+      embeds: [error('No active Connect Four game here.')],
+      ephemeral: true,
+    });
+  }
+
+  if (game.messageId && game.messageId !== interaction.message.id) {
+    return interaction.reply({
+      embeds: [error('This board is outdated. Use the latest game message.')],
+      ephemeral: true,
+    });
+  }
+
+  if (id === 'c4_decline') {
+    if (
+      interaction.user.id !== game.opponentId &&
+      interaction.user.id !== game.challengerId
+    ) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can decline.')],
+        ephemeral: true,
+      });
+    }
+    clearC4Game(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildC4Embed({
+          title: 'Connect Four',
+          description: 'Challenge declined.',
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id === 'c4_accept') {
+    if (game.mode !== 'pvp' || game.status !== 'pending') {
+      return interaction.reply({
+        embeds: [error('No pending challenge.')],
+        ephemeral: true,
+      });
+    }
+    if (interaction.user.id !== game.opponentId) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can accept.')],
+        ephemeral: true,
+      });
+    }
+    game.status = 'active';
+    game.turn = game.challengerId;
+    setC4Game(client, guildId, channelId, game);
+    return interaction.update({
+      embeds: [
+        buildC4Embed({
+          title: 'Connect Four',
+          description: [
+            `<@${game.challengerId}> (${RED}) vs <@${game.opponentId}> (${YELLOW})`,
+            'Click a column (1-7) to drop a piece.',
+            renderC4Board(game.board),
+            '',
+            `<@${game.turn}> goes first.`,
+          ].join('\n'),
+        }),
+      ],
+      components: buildC4Components(game.board),
+    });
+  }
+
+  if (id === 'c4_quit') {
+    const canQuit =
+      (game.mode === 'bot' && interaction.user.id === game.playerId) ||
+      (game.mode === 'pvp' &&
+        (interaction.user.id === game.challengerId ||
+          interaction.user.id === game.opponentId));
+    if (!canQuit) {
+      return interaction.reply({
+        embeds: [error('Only players can quit this game.')],
+        ephemeral: true,
+      });
+    }
+    clearC4Game(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildC4Embed({
+          title: 'Connect Four',
+          description: `${interaction.user} ended the game.`,
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id.startsWith('c4_drop:')) {
+    if (game.status !== 'active') {
+      return interaction.reply({
+        embeds: [error('This game is not active yet.')],
+        ephemeral: true,
+      });
+    }
+
+    const col = Number(id.split(':')[1]);
+    if (Number.isNaN(col) || col < 0 || col > 6) {
+      return interaction.reply({
+        embeds: [error('Invalid column.')],
+        ephemeral: true,
+      });
+    }
+
+    if (game.mode === 'bot') {
+      if (interaction.user.id !== game.playerId) {
+        return interaction.reply({
+          embeds: [error('This is not your game.')],
+          ephemeral: true,
+        });
+      }
+
+      if (dropPiece(game.board, col, RED) < 0) {
+        return interaction.reply({
+          embeds: [error('That column is full.')],
+          ephemeral: true,
+        });
+      }
+
+      if (checkC4Winner(game.board, RED)) {
+        clearC4Game(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'c4_wins');
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — You win',
+              description: [renderC4Board(game.board), '', 'You win!'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      if (isBoardFull(game.board)) {
+        clearC4Game(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Draw',
+              description: [renderC4Board(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      const botCol = c4BotMove(game.board, YELLOW, RED);
+      if (botCol >= 0) dropPiece(game.board, botCol, YELLOW);
+
+      if (checkC4Winner(game.board, YELLOW)) {
+        clearC4Game(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'c4_losses');
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Bot wins',
+              description: [renderC4Board(game.board), '', 'Bot wins.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      if (isBoardFull(game.board)) {
+        clearC4Game(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Draw',
+              description: [renderC4Board(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      setC4Game(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildC4Embed({
+            title: 'Connect Four',
+            description: [
+              `You are ${RED}, bot is ${YELLOW}.`,
+              'Click a column (1-7) to drop a piece.',
+              renderC4Board(game.board),
+            ].join('\n'),
+            footer: `${interaction.user.tag}'s turn`,
+          }),
+        ],
+        components: buildC4Components(game.board),
+      });
+    }
+
+    if (game.mode === 'pvp') {
+      if (interaction.user.id !== game.turn) {
+        return interaction.reply({
+          embeds: [error('It is not your turn.')],
+          ephemeral: true,
+        });
+      }
+
+      const mark = game.marks[interaction.user.id];
+      if (dropPiece(game.board, col, mark) < 0) {
+        return interaction.reply({
+          embeds: [error('That column is full.')],
+          ephemeral: true,
+        });
+      }
+
+      if (checkC4Winner(game.board, mark)) {
+        clearC4Game(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'c4_wins');
+        const loserId =
+          interaction.user.id === game.challengerId
+            ? game.opponentId
+            : game.challengerId;
+        client.db.addFunStat(guildId, loserId, 'c4_losses');
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Winner',
+              description: [
+                renderC4Board(game.board),
+                '',
+                `${interaction.user} wins!`,
+              ].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      if (isBoardFull(game.board)) {
+        clearC4Game(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildC4Embed({
+              title: 'Connect Four — Draw',
+              description: [renderC4Board(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildC4Components(game.board, { ended: true }),
+        });
+      }
+
+      game.turn =
+        game.turn === game.challengerId ? game.opponentId : game.challengerId;
+      setC4Game(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildC4Embed({
+            title: 'Connect Four',
+            description: [
+              `<@${game.challengerId}> (${RED}) vs <@${game.opponentId}> (${YELLOW})`,
+              renderC4Board(game.board),
+              '',
+              `<@${game.turn}>'s turn. Click a column.`,
+            ].join('\n'),
+          }),
+        ],
+        components: buildC4Components(game.board),
+      });
+    }
+  }
+}
+
+async function handleTtt(client, interaction) {
+  if (!interaction.isButton()) return;
+  if (!interaction.guild) return;
+
+  const id = interaction.customId;
+  if (
+    id !== 'ttt_accept' &&
+    id !== 'ttt_decline' &&
+    id !== 'ttt_quit' &&
+    !id.startsWith('ttt_cell:')
+  ) {
+    return;
+  }
+
+  const guildId = interaction.guild.id;
+  const channelId = interaction.channel.id;
+  const game = getTttGame(client, guildId, channelId);
+
+  if (!game) {
+    return interaction.reply({
+      embeds: [error('No active tic-tac-toe game here.')],
+      ephemeral: true,
+    });
+  }
+
+  if (game.messageId && game.messageId !== interaction.message.id) {
+    return interaction.reply({
+      embeds: [error('This board is outdated. Use the latest game message.')],
+      ephemeral: true,
+    });
+  }
+
+  if (id === 'ttt_decline') {
+    if (
+      interaction.user.id !== game.opponentId &&
+      interaction.user.id !== game.challengerId
+    ) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can decline.')],
+        ephemeral: true,
+      });
+    }
+    clearTttGame(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildTttEmbed({
+          title: 'Tic-Tac-Toe',
+          description: 'Challenge declined.',
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id === 'ttt_accept') {
+    if (game.mode !== 'pvp' || game.status !== 'pending') {
+      return interaction.reply({
+        embeds: [error('No pending challenge.')],
+        ephemeral: true,
+      });
+    }
+    if (interaction.user.id !== game.opponentId) {
+      return interaction.reply({
+        embeds: [error('Only the challenged player can accept.')],
+        ephemeral: true,
+      });
+    }
+    game.status = 'active';
+    game.turn = game.challengerId;
+    setTttGame(client, guildId, channelId, game);
+    return interaction.update({
+      embeds: [
+        buildTttEmbed({
+          title: 'Tic-Tac-Toe',
+          description: [
+            `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+            renderBoard(game.board),
+            '',
+            `<@${game.turn}> goes first. Click a cell.`,
+          ].join('\n'),
+        }),
+      ],
+      components: buildTttComponents(game.board),
+    });
+  }
+
+  if (id === 'ttt_quit') {
+    const canQuit =
+      (game.mode === 'bot' && interaction.user.id === game.playerId) ||
+      (game.mode === 'pvp' &&
+        (interaction.user.id === game.challengerId ||
+          interaction.user.id === game.opponentId));
+    if (!canQuit) {
+      return interaction.reply({
+        embeds: [error('Only players can quit this game.')],
+        ephemeral: true,
+      });
+    }
+    clearTttGame(client, guildId, channelId);
+    return interaction.update({
+      embeds: [
+        buildTttEmbed({
+          title: 'Tic-Tac-Toe',
+          description: `${interaction.user} ended the game.`,
+        }),
+      ],
+      components: [],
+    });
+  }
+
+  if (id.startsWith('ttt_cell:')) {
+    if (game.status !== 'active') {
+      return interaction.reply({
+        embeds: [error('This game is not active yet.')],
+        ephemeral: true,
+      });
+    }
+
+    const idx = Number(id.split(':')[1]);
+    if (Number.isNaN(idx) || idx < 0 || idx > 8) {
+      return interaction.reply({
+        embeds: [error('Invalid cell.')],
+        ephemeral: true,
+      });
+    }
+    if (game.board[idx]) {
+      return interaction.reply({
+        embeds: [error('That cell is already taken.')],
+        ephemeral: true,
+      });
+    }
+
+    if (game.mode === 'bot') {
+      if (interaction.user.id !== game.playerId) {
+        return interaction.reply({
+          embeds: [error('This is not your game.')],
+          ephemeral: true,
+        });
+      }
+
+      game.board[idx] = 'X';
+      let result = checkTttWinner(game.board);
+      if (result === 'X') {
+        clearTttGame(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'ttt_wins');
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — You win',
+              description: [renderBoard(game.board), '', 'You win!'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+      if (result === 'tie') {
+        clearTttGame(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Draw',
+              description: [renderBoard(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      const botIdx = botMove(game.board, 'O', 'X');
+      if (botIdx >= 0) game.board[botIdx] = 'O';
+      result = checkTttWinner(game.board);
+
+      if (result === 'O') {
+        clearTttGame(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'ttt_losses');
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Bot wins',
+              description: [renderBoard(game.board), '', 'Bot wins.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+      if (result === 'tie') {
+        clearTttGame(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Draw',
+              description: [renderBoard(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      setTttGame(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildTttEmbed({
+            title: 'Tic-Tac-Toe',
+            description: [
+              'You are **X**, bot is **O**.',
+              renderBoard(game.board),
+              '',
+              'Your turn. Click a cell.',
+            ].join('\n'),
+            footer: `${interaction.user.tag}'s turn`,
+          }),
+        ],
+        components: buildTttComponents(game.board),
+      });
+    }
+
+    if (game.mode === 'pvp') {
+      if (interaction.user.id !== game.turn) {
+        return interaction.reply({
+          embeds: [error('It is not your turn.')],
+          ephemeral: true,
+        });
+      }
+
+      const mark = game.marks[interaction.user.id];
+      game.board[idx] = mark;
+      const result = checkTttWinner(game.board);
+
+      if (result === mark) {
+        clearTttGame(client, guildId, channelId);
+        client.db.addFunStat(guildId, interaction.user.id, 'ttt_wins');
+        const loserId =
+          interaction.user.id === game.challengerId
+            ? game.opponentId
+            : game.challengerId;
+        client.db.addFunStat(guildId, loserId, 'ttt_losses');
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Winner',
+              description: [
+                renderBoard(game.board),
+                '',
+                `${interaction.user} wins!`,
+              ].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      if (result === 'tie') {
+        clearTttGame(client, guildId, channelId);
+        return interaction.update({
+          embeds: [
+            buildTttEmbed({
+              title: 'Tic-Tac-Toe — Draw',
+              description: [renderBoard(game.board), '', 'Draw.'].join('\n'),
+            }),
+          ],
+          components: buildTttComponents(game.board, { ended: true }),
+        });
+      }
+
+      game.turn =
+        game.turn === game.challengerId ? game.opponentId : game.challengerId;
+      setTttGame(client, guildId, channelId, game);
+      return interaction.update({
+        embeds: [
+          buildTttEmbed({
+            title: 'Tic-Tac-Toe',
+            description: [
+              `<@${game.challengerId}> (**X**) vs <@${game.opponentId}> (**O**)`,
+              renderBoard(game.board),
+              '',
+              `<@${game.turn}>'s turn. Click a cell.`,
+            ].join('\n'),
+          }),
+        ],
+        components: buildTttComponents(game.board),
+      });
+    }
+  }
+}
 
 async function handleHelp(client, interaction) {
   const [action, ownerId] = interaction.customId.split(':');
@@ -77,28 +703,388 @@ async function handleHelp(client, interaction) {
 
 async function handleGiveawayEnter(client, interaction) {
   const giveaway = client.db.getGiveaway(interaction.message.id);
-  if (!giveaway || giveaway.ended) {
+  if (!giveaway || giveaway.ended || giveaway.cancelled) {
     return interaction.reply({
       embeds: [error('This giveaway is no longer active.')],
       ephemeral: true,
     });
   }
 
-  const entries = new Set(giveaway.entries || []);
-  if (entries.has(interaction.user.id)) {
+  const guildData = client.db.ensureGuild(interaction.guild.id);
+  const settings = getGiveawaySettings(guildData, giveaway);
+  const fail = checkEligibility(interaction.member, settings);
+  if (fail) {
+    return interaction.reply({ embeds: [error(fail)], ephemeral: true });
+  }
+
+  const map = parseEntryMap(giveaway.entries);
+  if (map[interaction.user.id]) {
     return interaction.reply({
-      embeds: [info('You are already entered.')],
+      embeds: [info('You are already entered. Use **Leave** to withdraw first.')],
       ephemeral: true,
     });
   }
 
-  entries.add(interaction.user.id);
-  client.db.updateGiveaway(interaction.message.id, { entries: [...entries] });
+  map[interaction.user.id] = entryWeight(interaction.member, settings);
+  client.db.updateGiveaway(interaction.message.id, { entries: map });
+  await refreshGiveawayMessage(client, interaction.message.id);
 
+  const stats = entryStats(map);
   return interaction.reply({
-    embeds: [success(`You entered the giveaway. Entries: **${entries.size}**`)],
+    embeds: [
+      success(
+        `You entered the giveaway with **${map[interaction.user.id]}** entry/entries.\nTotal entries: **${stats.entries}** (${stats.participants} participants).`
+      ),
+    ],
     ephemeral: true,
   });
+}
+
+async function handleGiveawayLeave(client, interaction) {
+  const giveaway = client.db.getGiveaway(interaction.message.id);
+  if (!giveaway || giveaway.ended || giveaway.cancelled) {
+    return interaction.reply({
+      embeds: [error('This giveaway is no longer active.')],
+      ephemeral: true,
+    });
+  }
+
+  const map = parseEntryMap(giveaway.entries);
+  if (!map[interaction.user.id]) {
+    return interaction.reply({
+      embeds: [info('You are not entered in this giveaway.')],
+      ephemeral: true,
+    });
+  }
+
+  delete map[interaction.user.id];
+  client.db.updateGiveaway(interaction.message.id, { entries: map });
+  await refreshGiveawayMessage(client, interaction.message.id);
+
+  const stats = entryStats(map);
+  return interaction.reply({
+    embeds: [
+      success(
+        `You left the giveaway.\nTotal entries: **${stats.entries}** (${stats.participants} participants).`
+      ),
+    ],
+    ephemeral: true,
+  });
+}
+
+async function handleGiveawayCreate(client, interaction) {
+  const guildData = client.db.ensureGuild(interaction.guild.id);
+  if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+    return interaction.reply({
+      embeds: [error('Admin permission required.')],
+      ephemeral: true,
+    });
+  }
+
+  const refreshMenu = async (draft, ownerId) => {
+    if (!interaction.message?.editable) return;
+    await interaction.message.edit({
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
+    });
+  };
+
+  const getOrCreateDraft = (ownerId) => {
+    let draft = getDraft(client, interaction.guild.id, ownerId);
+    if (!draft) {
+      draft = defaultDraft(interaction.channel?.id);
+      setDraft(client, interaction.guild.id, ownerId, draft);
+    }
+    return draft;
+  };
+
+  if (interaction.isModalSubmit()) {
+    const ownerId = interaction.user.id;
+    const draft = getOrCreateDraft(ownerId);
+
+    if (interaction.customId === 'gcreate_prize_modal') {
+      const prize = interaction.fields.getTextInputValue('prize').trim();
+      if (!prize) {
+        return interaction.reply({
+          embeds: [error('Prize cannot be empty.')],
+          ephemeral: true,
+        });
+      }
+      draft.prize = prize.slice(0, 256);
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Prize set to **${draft.prize}**.`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+
+    if (interaction.customId === 'gcreate_duration_modal') {
+      const duration = interaction.fields.getTextInputValue('duration').trim();
+      if (!parseDuration(duration)) {
+        return interaction.reply({
+          embeds: [error('Invalid duration (e.g. `1h`, `2d`, `30m`).')],
+          ephemeral: true,
+        });
+      }
+      draft.duration = duration;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Duration set to **${duration}**.`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+
+    if (interaction.customId === 'gcreate_winners_modal') {
+      const winners = Math.floor(
+        Number(interaction.fields.getTextInputValue('winners'))
+      );
+      if (!winners || winners < 1) {
+        return interaction.reply({
+          embeds: [error('Winners must be a number >= 1.')],
+          ephemeral: true,
+        });
+      }
+      draft.winners = winners;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Winners set to **${winners}**.`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+
+    if (interaction.customId === 'gcreate_min_age_modal') {
+      const days = Number(interaction.fields.getTextInputValue('days'));
+      if (Number.isNaN(days) || days < 0) {
+        return interaction.reply({
+          embeds: [error('Days must be a number >= 0.')],
+          ephemeral: true,
+        });
+      }
+      draft.minAccountDays = days;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Minimum account age set to **${days}** day(s).`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+
+    if (interaction.customId === 'gcreate_bonus_entries_modal') {
+      const amount = Number(interaction.fields.getTextInputValue('amount'));
+      if (Number.isNaN(amount) || amount < 0) {
+        return interaction.reply({
+          embeds: [error('Amount must be a number >= 0.')],
+          ephemeral: true,
+        });
+      }
+      draft.bonusEntries = amount;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      await interaction.reply({
+        embeds: [success(`Bonus entries set to **+${amount}**.`)],
+        ephemeral: true,
+      });
+      return refreshMenu(draft, ownerId);
+    }
+    return;
+  }
+
+  const parts = interaction.customId.split(':');
+  const action = parts[0];
+  const ownerId =
+    action === 'gcreate_role' ? parts[2] : parts[1];
+
+  if (!assertGiveawayCreateOwner(interaction, ownerId)) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use this menu.')],
+      ephemeral: true,
+    });
+  }
+
+  const draft = getOrCreateDraft(ownerId);
+
+  if (action === 'gcreate_close') {
+    clearDraft(client, interaction.guild.id, ownerId);
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Giveaway creator closed. Run `+gcreate` to start again.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'gcreate_back') {
+    return interaction.update({
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
+    });
+  }
+
+  if (action === 'gcreate_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+
+    if (choice === 'prize') {
+      return interaction.showModal(giveawayPrizeModal(draft));
+    }
+
+    if (choice === 'duration') {
+      return interaction.showModal(giveawayDurationModal(draft));
+    }
+
+    if (choice === 'winners') {
+      return interaction.showModal(giveawayWinnersModal(draft));
+    }
+
+    if (choice === 'channel') {
+      return interaction.update({
+        embeds: [
+          giveawayCreatePickerEmbed(
+            'Post channel',
+            'Choose where the giveaway will be published.'
+          ),
+        ],
+        components: giveawayCreateChannelPicker(ownerId),
+      });
+    }
+
+    if (choice === 'required_role') {
+      return interaction.update({
+        embeds: [
+          giveawayCreatePickerEmbed(
+            'Required role',
+            'Members need this role to enter.'
+          ),
+        ],
+        components: giveawayCreateRolePicker(ownerId, 'required'),
+      });
+    }
+
+    if (choice === 'bonus_role') {
+      return interaction.update({
+        embeds: [
+          giveawayCreatePickerEmbed(
+            'Bonus role',
+            'Members with this role receive extra entries.'
+          ),
+        ],
+        components: giveawayCreateRolePicker(ownerId, 'bonus'),
+      });
+    }
+
+    if (choice === 'min_age') {
+      return interaction.showModal(giveawayCreateMinAgeModal(draft));
+    }
+
+    if (choice === 'bonus_entries') {
+      return interaction.showModal(giveawayCreateBonusModal(draft));
+    }
+
+    if (choice === 'boosters') {
+      draft.boostersOnly = !draft.boostersOnly;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      return interaction.update({
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
+      });
+    }
+
+    if (choice === 'ping') {
+      draft.pingOnEnd = !draft.pingOnEnd;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      return interaction.update({
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
+      });
+    }
+
+    if (choice === 'clear_required') {
+      draft.requiredRole = null;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      return interaction.update({
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
+      });
+    }
+
+    if (choice === 'clear_bonus') {
+      draft.bonusRole = null;
+      draft.bonusEntries = 0;
+      setDraft(client, interaction.guild.id, ownerId, draft);
+      return interaction.update({
+        embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+        components: giveawayCreateMenu(ownerId),
+      });
+    }
+
+    if (choice === 'post') {
+      await interaction.deferUpdate();
+      const result = await postGiveaway(
+        client,
+        interaction.guild,
+        draft,
+        interaction.user
+      );
+
+      if (result.error) {
+        await interaction.editReply({
+          embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+          components: giveawayCreateMenu(ownerId),
+        });
+        return interaction.followUp({
+          embeds: [error(result.error)],
+          ephemeral: true,
+        });
+      }
+
+      clearDraft(client, interaction.guild.id, ownerId);
+      return interaction.editReply({
+        embeds: [
+          success(
+            [
+              `Giveaway posted in ${result.channel}.`,
+              `Message: ${result.message.url}`,
+            ].join('\n'),
+            'Giveaway created'
+          ),
+        ],
+        components: [],
+      });
+    }
+  }
+
+  if (action === 'gcreate_role' && interaction.isRoleSelectMenu()) {
+    const field = parts[1];
+    const role = interaction.roles.first();
+    if (field === 'required') draft.requiredRole = role.id;
+    if (field === 'bonus') draft.bonusRole = role.id;
+    setDraft(client, interaction.guild.id, ownerId, draft);
+    await interaction.update({
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
+    });
+    return interaction.followUp({
+      embeds: [success(`Set ${field} role to ${role}.`)],
+      ephemeral: true,
+    });
+  }
+
+  if (action === 'gcreate_channel' && interaction.isChannelSelectMenu()) {
+    const channel = interaction.channels.first();
+    draft.channelId = channel.id;
+    setDraft(client, interaction.guild.id, ownerId, draft);
+    await interaction.update({
+      embeds: [buildGiveawayCreateEmbed(interaction.guild, draft)],
+      components: giveawayCreateMenu(ownerId),
+    });
+    return interaction.followUp({
+      embeds: [success(`Giveaway will post in ${channel}.`)],
+      ephemeral: true,
+    });
+  }
 }
 
 async function requireTicketStaff(client, interaction) {
@@ -492,8 +1478,52 @@ module.exports = {
       return handleTicketSetup(client, interaction);
     }
 
+    if (
+      (interaction.isStringSelectMenu() ||
+        interaction.isChannelSelectMenu() ||
+        interaction.isRoleSelectMenu() ||
+        interaction.isButton() ||
+        interaction.isModalSubmit()) &&
+      (interaction.customId.startsWith('gcreate_') ||
+        [
+          'gcreate_prize_modal',
+          'gcreate_duration_modal',
+          'gcreate_winners_modal',
+          'gcreate_min_age_modal',
+          'gcreate_bonus_entries_modal',
+        ].includes(interaction.customId))
+    ) {
+      return handleGiveawayCreate(client, interaction);
+    }
+
     if (interaction.isButton() && interaction.customId === 'giveaway_enter') {
       return handleGiveawayEnter(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId === 'giveaway_leave') {
+      return handleGiveawayLeave(client, interaction);
+    }
+
+    if (
+      interaction.isButton() &&
+      (interaction.customId.startsWith('ttt_') ||
+        interaction.customId === 'ttt_accept' ||
+        interaction.customId === 'ttt_decline' ||
+        interaction.customId === 'ttt_quit')
+    ) {
+      return handleTtt(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('c4_')) {
+      return handleConnect4(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('poll_vote:')) {
+      return handlePollVote(client, interaction);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('poll_end:')) {
+      return handlePollEnd(client, interaction);
     }
 
     const ticketIds = [

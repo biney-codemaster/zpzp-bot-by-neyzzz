@@ -1,30 +1,31 @@
 const { EmbedBuilder } = require('discord.js');
 const { color, error } = require('../../utils/embeds');
-const { fetchMeme } = require('../../services/funApi');
+const { fetchFact } = require('../../services/funApi');
 
 module.exports = {
-  name: 'meme',
-  description: 'Random meme',
+  name: 'fact',
+  description: 'Random fun fact',
   category: 'fun',
+  aliases: ['funfact'],
   permLevel: 'user',
   cooldown: 5,
   async execute(client, message) {
     try {
-      const meme = await fetchMeme();
+      const fact = await fetchFact();
       return message.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(color())
-            .setTitle(meme.title || 'Meme')
-            .setImage(meme.url)
-            .setFooter({ text: meme.footer || 'Meme API' })
+            .setTitle('Fun fact')
+            .setDescription(fact.text)
+            .setFooter({ text: fact.source })
             .setTimestamp(),
         ],
       });
     } catch (err) {
-      console.error('[meme]', err);
+      console.error('[fact]', err);
       return message.reply({
-        embeds: [error('Could not fetch a meme right now. Try again later.')],
+        embeds: [error('Could not fetch a fact right now. Try again later.')],
       });
     }
   },
