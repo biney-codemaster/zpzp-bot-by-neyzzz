@@ -9,7 +9,7 @@ module.exports = {
   name: 'automod',
   description: 'Open the automod setup menu',
   category: 'config',
-  usage: '[antilink|antispam|badwords ...] | open menu',
+  usage: '',
   permLevel: 'owner',
   async execute(client, message, args) {
     const g = client.db.ensureGuild(message.guild.id);

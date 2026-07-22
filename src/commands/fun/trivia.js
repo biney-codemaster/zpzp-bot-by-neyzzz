@@ -10,7 +10,7 @@ const {
 
 module.exports = {
   name: 'trivia',
-  description: 'Answer a trivia question',
+  description: 'Start or answer a trivia question',
   category: 'fun',
   aliases: ['quiz'],
   usage: '[answer]',

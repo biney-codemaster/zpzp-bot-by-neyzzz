@@ -3,7 +3,7 @@ const { success, error } = require('../../utils/embeds');
 
 module.exports = {
   name: 'gend',
-  description: 'End a giveaway now',
+  description: 'End a giveaway now (ID or reply)',
   category: 'giveaways',
   usage: '[message_id]',
   permLevel: 'owner',

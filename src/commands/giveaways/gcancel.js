@@ -3,7 +3,7 @@ const { success, error } = require('../../utils/embeds');
 
 module.exports = {
   name: 'gcancel',
-  description: 'Cancel a giveaway without drawing winners',
+  description: 'Cancel a giveaway without drawing winners (ID or reply)',
   category: 'giveaways',
   aliases: ['gabort'],
   usage: '[message_id]',

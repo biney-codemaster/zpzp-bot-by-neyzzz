@@ -14,7 +14,7 @@ const {
 
 module.exports = {
   name: 'connect4',
-  description: 'Play Connect Four with buttons',
+  description: 'Play Connect Four vs the bot, or challenge a member',
   category: 'fun',
   aliases: ['c4', 'puissance4', 'p4'],
   usage: '[@member|quit]',

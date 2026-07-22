@@ -3,10 +3,10 @@ const { fetchMember, parseRole, parseChannel } = require('../../utils/helpers');
 
 module.exports = {
   name: 'id',
-  description: 'Show ID of a user, role, or channel',
+  description: 'Show IDs for yourself, this channel/server, or a mention',
   category: 'utility',
   aliases: ['getid'],
-  usage: '<@user|@role|#channel|name>',
+  usage: '[@user|@role|#channel]',
   permLevel: 'user',
   async execute(client, message, args) {
     if (!args.length && !message.mentions.users.size && !message.mentions.roles.size && !message.mentions.channels.size) {

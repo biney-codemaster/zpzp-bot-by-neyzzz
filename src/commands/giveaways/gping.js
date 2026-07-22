@@ -11,7 +11,7 @@ function parseWinners(raw) {
 
 module.exports = {
   name: 'gping',
-  description: 'Ping stored winners of an ended giveaway',
+  description: 'Ping stored winners of an ended giveaway (ID or reply)',
   category: 'giveaways',
   usage: '[message_id]',
   permLevel: 'owner',

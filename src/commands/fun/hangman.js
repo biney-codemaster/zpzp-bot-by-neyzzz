@@ -10,9 +10,9 @@ const {
 
 module.exports = {
   name: 'hangman',
-  description: 'Play hangman (prefix)',
+  description: 'Play hangman',
   category: 'fun',
-  usage: 'start | <letter> | quit',
+  usage: '[start|<letter>|quit]',
   permLevel: 'user',
   cooldown: 3,
   async execute(client, message, args) {

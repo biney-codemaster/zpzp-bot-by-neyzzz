@@ -12,7 +12,7 @@ const {
 
 module.exports = {
   name: 'tictactoe',
-  description: 'Play tic-tac-toe with buttons',
+  description: 'Play tic-tac-toe vs the bot, or challenge a member',
   category: 'fun',
   aliases: ['ttt', 'tictac'],
   usage: '[@member|quit]',

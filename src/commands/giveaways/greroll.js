@@ -3,9 +3,9 @@ const { success, error } = require('../../utils/embeds');
 
 module.exports = {
   name: 'greroll',
-  description: 'Reroll giveaway winner(s)',
+  description: 'Reroll giveaway winner(s) by ID or by replying to the giveaway',
   category: 'giveaways',
-  usage: '<message_id> [count]',
+  usage: '[message_id] [count]',
   permLevel: 'owner',
   async execute(client, message, args) {
     const id = args[0] || message.reference?.messageId;

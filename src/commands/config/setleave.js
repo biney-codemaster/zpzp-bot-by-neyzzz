@@ -10,7 +10,7 @@ module.exports = {
   description: 'Open the leave setup menu',
   category: 'config',
   aliases: ['leave'],
-  usage: '[channel|off] [message]',
+  usage: '',
   permLevel: 'owner',
   async execute(client, message, args) {
     if (!args[0]) {

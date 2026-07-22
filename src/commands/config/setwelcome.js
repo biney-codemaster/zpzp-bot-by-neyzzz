@@ -10,7 +10,7 @@ module.exports = {
   description: 'Open the welcome setup menu',
   category: 'config',
   aliases: ['welcome'],
-  usage: '[channel|off] [message]',
+  usage: '',
   permLevel: 'owner',
   async execute(client, message, args) {
     if (!args[0]) {

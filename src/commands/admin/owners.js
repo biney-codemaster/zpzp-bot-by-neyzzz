@@ -24,7 +24,7 @@ module.exports = {
   description: 'List bot owners, or add/remove an owner',
   category: 'admin',
   aliases: ['owner'],
-  usage: '[add|remove] [@user|id]',
+  usage: '[list|add|remove] [@user|id]',
   permLevel: 'owner',
   ownerOnly: true,
   async execute(client, message, args) {
