@@ -33,7 +33,8 @@ function buildLeaveEmbed(guild, guildData) {
     .setTitle(withEmoji('config', 'Leave setup'))
     .setDescription(
       [
-        'Configure the leave channel and message from the menu below.',
+        'Pick a channel below to set the leave channel.',
+        'Use the second menu for message, preview, disable, or reset.',
         '',
         'Placeholders: `{user}` `{user.name}` `{user.tag}` `{user.id}` `{server}` `{server.id}` `{count}`',
       ].join('\n')
@@ -60,15 +61,17 @@ function buildLeaveEmbed(guild, guildData) {
 }
 
 function mainMenu(userId) {
+  const channel = new ChannelSelectMenuBuilder()
+    .setCustomId(`lsetup_channel:${userId}`)
+    .setPlaceholder('Select leave channel...')
+    .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+    .setMinValues(1)
+    .setMaxValues(1);
+
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`lsetup_menu:${userId}`)
-    .setPlaceholder('Choose what to configure...')
+    .setPlaceholder('Message, preview, disable, reset...')
     .addOptions(
-      {
-        label: 'Channel',
-        value: 'channel',
-        description: 'Set the leave channel',
-      },
       {
         label: 'Message',
         value: 'message',
@@ -98,31 +101,9 @@ function mainMenu(userId) {
   applyComponentEmoji(close, 'close');
 
   return [
+    new ActionRowBuilder().addComponents(channel),
     new ActionRowBuilder().addComponents(menu),
     new ActionRowBuilder().addComponents(close),
-  ];
-}
-
-function backRow(userId) {
-  const back = new ButtonBuilder()
-    .setCustomId(`lsetup_back:${userId}`)
-    .setLabel('Back')
-    .setStyle(ButtonStyle.Secondary);
-  applyComponentEmoji(back, 'home');
-  return new ActionRowBuilder().addComponents(back);
-}
-
-function channelPicker(userId) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder()
-        .setCustomId(`lsetup_channel:${userId}`)
-        .setPlaceholder('Select a leave channel...')
-        .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-        .setMinValues(1)
-        .setMaxValues(1)
-    ),
-    backRow(userId),
   ];
 }
 
@@ -183,7 +164,6 @@ function assertOwner(interaction, ownerId) {
 module.exports = {
   buildLeaveEmbed,
   mainMenu,
-  channelPicker,
   messageModal,
   pickerEmbed,
   buildPreviewEmbed,

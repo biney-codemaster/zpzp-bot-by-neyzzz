@@ -88,9 +88,7 @@ const {
 const {
   buildWelcomeEmbed,
   mainMenu: welcomeMainMenu,
-  channelPicker: welcomeChannelPicker,
   messageModal: welcomeMessageModal,
-  pickerEmbed: welcomePickerEmbed,
   buildPreviewEmbed: buildWelcomePreview,
   resetWelcome,
   assertOwner: assertWelcomeOwner,
@@ -98,9 +96,7 @@ const {
 const {
   buildLeaveEmbed,
   mainMenu: leaveMainMenu,
-  channelPicker: leaveChannelPicker,
   messageModal: leaveMessageModal,
-  pickerEmbed: leavePickerEmbed,
   buildPreviewEmbed: buildLeavePreview,
   resetLeave,
   assertOwner: assertLeaveOwner,
@@ -1549,28 +1545,8 @@ async function handleWelcomeSetup(client, interaction) {
     });
   }
 
-  if (action === 'wsetup_back') {
-    const data = client.db.ensureGuild(interaction.guild.id);
-    return interaction.update({
-      embeds: [buildWelcomeEmbed(interaction.guild, data)],
-      components: welcomeMainMenu(ownerId),
-    });
-  }
-
   if (action === 'wsetup_menu' && interaction.isStringSelectMenu()) {
     const choice = interaction.values[0];
-
-    if (choice === 'channel') {
-      return interaction.update({
-        embeds: [
-          welcomePickerEmbed(
-            'Select welcome channel',
-            'Choose where welcome messages are sent.'
-          ),
-        ],
-        components: welcomeChannelPicker(ownerId),
-      });
-    }
 
     if (choice === 'message') {
       const data = client.db.ensureGuild(interaction.guild.id);
@@ -1668,28 +1644,8 @@ async function handleLeaveSetup(client, interaction) {
     });
   }
 
-  if (action === 'lsetup_back') {
-    const data = client.db.ensureGuild(interaction.guild.id);
-    return interaction.update({
-      embeds: [buildLeaveEmbed(interaction.guild, data)],
-      components: leaveMainMenu(ownerId),
-    });
-  }
-
   if (action === 'lsetup_menu' && interaction.isStringSelectMenu()) {
     const choice = interaction.values[0];
-
-    if (choice === 'channel') {
-      return interaction.update({
-        embeds: [
-          leavePickerEmbed(
-            'Select leave channel',
-            'Choose where leave messages are sent.'
-          ),
-        ],
-        components: leaveChannelPicker(ownerId),
-      });
-    }
 
     if (choice === 'message') {
       const data = client.db.ensureGuild(interaction.guild.id);
