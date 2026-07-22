@@ -126,14 +126,6 @@ function messageModal(guildData) {
     );
 }
 
-function pickerEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(color())
-    .setTitle(withEmoji('config', title))
-    .setDescription(description)
-    .setTimestamp();
-}
-
 function buildPreviewEmbed(member, guildData) {
   const text = replacePlaceholders(
     guildData.leave_message || DEFAULT_LEAVE_MESSAGE,
@@ -165,7 +157,6 @@ module.exports = {
   buildLeaveEmbed,
   mainMenu,
   messageModal,
-  pickerEmbed,
   buildPreviewEmbed,
   resetLeave,
   assertOwner,

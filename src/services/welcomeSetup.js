@@ -126,14 +126,6 @@ function messageModal(guildData) {
     );
 }
 
-function pickerEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(color())
-    .setTitle(withEmoji('config', title))
-    .setDescription(description)
-    .setTimestamp();
-}
-
 function buildPreviewEmbed(member, guildData) {
   const text = replacePlaceholders(
     guildData.welcome_message || DEFAULT_WELCOME_MESSAGE,
@@ -165,7 +157,6 @@ module.exports = {
   buildWelcomeEmbed,
   mainMenu,
   messageModal,
-  pickerEmbed,
   buildPreviewEmbed,
   resetWelcome,
   assertOwner,
