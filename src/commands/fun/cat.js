@@ -1,13 +1,21 @@
-const { EmbedBuilder } = require('discord.js');
-const { color, error } = require('../../utils/embeds');
+const { error } = require('../../utils/embeds');
+const { fetchCatImage, imageEmbed } = require('../../services/funApi');
+
 module.exports = {
-  name: 'cat', description: 'Random cat image', category: 'fun', permLevel: 'user', cooldown: 5,
+  name: 'cat',
+  description: 'Random cat image',
+  category: 'fun',
+  permLevel: 'user',
+  cooldown: 5,
   async execute(client, message) {
     try {
-      const res = await fetch('https://api.thecatapi.com/v1/images/search');
-      const data = await res.json();
-      if (!data?.[0]?.url) throw new Error('no');
-      return message.reply({ embeds: [new EmbedBuilder().setColor(color()).setTitle('Cat').setImage(data[0].url)] });
-    } catch { return message.reply({ embeds: [error('Could not fetch a cat.')] }); }
+      const img = await fetchCatImage();
+      return message.reply({ embeds: [imageEmbed(img)] });
+    } catch (err) {
+      console.error('[cat]', err);
+      return message.reply({
+        embeds: [error('Could not fetch a cat right now. Try again later.')],
+      });
+    }
   },
 };

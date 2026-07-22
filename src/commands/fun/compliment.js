@@ -1,10 +1,17 @@
 const { fetchMember, pick } = require('../../utils/helpers');
 const { info } = require('../../utils/embeds');
-const lines = ['you make this server better.', 'you have legendary vibes.', 'keep doing exactly what you are doing.'];
+const { COMPLIMENTS } = require('../../utils/funContent');
+
 module.exports = {
-  name: 'compliment', description: 'Compliment someone', category: 'fun', usage: '[member]', permLevel: 'user',
+  name: 'compliment',
+  description: 'Compliment someone',
+  category: 'fun',
+  usage: '[member]',
+  permLevel: 'user',
   async execute(client, message, args) {
     const member = (await fetchMember(message, args[0])) || message.member;
-    return message.reply({ embeds: [info(`${member}, ${pick(lines)}`)] });
+    return message.reply({
+      embeds: [info(`${member}, ${pick(COMPLIMENTS)}`)],
+    });
   },
 };
