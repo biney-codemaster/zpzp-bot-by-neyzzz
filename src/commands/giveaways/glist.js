@@ -6,7 +6,7 @@ module.exports = {
   description: 'List active giveaways',
   category: 'giveaways',
   aliases: ['giveaways', 'gactive'],
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message) {
     const rows = client.db.getActiveGiveawaysByGuild(message.guild.id);
     if (!rows.length) {

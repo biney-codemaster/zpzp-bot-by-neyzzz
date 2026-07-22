@@ -121,6 +121,12 @@ class Database {
         hangman_wins INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (guild_id, user_id)
       );
+
+      CREATE TABLE IF NOT EXISTS bot_owners (
+        id TEXT PRIMARY KEY,
+        added_by TEXT,
+        added_at INTEGER NOT NULL
+      );
     `);
 
     this.#ensureColumn('tickets', 'closed_by', 'TEXT');
@@ -181,6 +187,32 @@ class Database {
   getPrefix(guildId) {
     if (!guildId) return config.prefix;
     return this.ensureGuild(guildId).prefix || config.prefix;
+  }
+
+  listOwners() {
+    return this.db
+      .prepare('SELECT * FROM bot_owners ORDER BY added_at ASC')
+      .all();
+  }
+
+  addOwner(userId, addedBy) {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO bot_owners (id, added_by, added_at)
+         VALUES (?, ?, ?)`
+      )
+      .run(userId, addedBy || null, Date.now());
+  }
+
+  removeOwner(userId) {
+    return this.db.prepare('DELETE FROM bot_owners WHERE id = ?').run(userId)
+      .changes;
+  }
+
+  isDbOwner(userId) {
+    return Boolean(
+      this.db.prepare('SELECT id FROM bot_owners WHERE id = ?').get(userId)
+    );
   }
 
   addWarning(guildId, userId, moderatorId, reason) {

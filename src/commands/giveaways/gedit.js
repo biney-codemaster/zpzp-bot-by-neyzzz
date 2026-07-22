@@ -11,7 +11,7 @@ module.exports = {
   description: 'Edit an active giveaway',
   category: 'giveaways',
   usage: '<message_id> <prize|winners|duration> <value>',
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message, args) {
     const id = args[0] || message.reference?.messageId;
     const field = (args[1] || '').toLowerCase();

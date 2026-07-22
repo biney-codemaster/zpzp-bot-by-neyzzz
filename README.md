@@ -34,13 +34,16 @@ Use Discord custom emoji format `<:name:id>` / `<a:name:id>`, or leave `null`.
 
 | Level | Who |
 |---|---|
-| `owner` | IDs in `OWNER_IDS` |
-| `admin` | Bot admin role **or** Discord Admin / guild owner |
-| `mod` | Bot mod role (+ admin) |
+| `owner` | `OWNER_IDS` (env) + owners added with `+owners add` |
+| `mod` | Bot mod role (`+setmodrole`) |
 | `user` | Everyone |
 
+Config / tickets / giveaways require **bot owner**. Moderation uses the mod role.
+
 ```text
-+setadminrole @Admin
++owners
++owners add @user
++owners remove @user
 +setmodrole @Mod
 +setmodlog #logs
 ```
@@ -57,11 +60,10 @@ Use Discord custom emoji format `<:name:id>` / `<a:name:id>`, or leave `null`.
 
 ```text
 +help
-+setadminrole @Admin
++owners
 +setmodrole @Staff
 +setmodlog #mod-logs
-+setwelcome #welcome Welcome {user} to {server}!
++setwelcome
 +ticketsetup
-+automod antilink on
-+automod antispam on
++automod
 ```

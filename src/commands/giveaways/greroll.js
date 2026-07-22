@@ -6,7 +6,7 @@ module.exports = {
   description: 'Reroll giveaway winner(s)',
   category: 'giveaways',
   usage: '<message_id> [count]',
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message, args) {
     const id = args[0] || message.reference?.messageId;
     if (!id) {

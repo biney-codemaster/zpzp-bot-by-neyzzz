@@ -148,7 +148,7 @@ async function openTicket(client, interaction) {
   const g = client.db.ensureGuild(interaction.guild.id);
   if (!g.ticket_category) {
     return interaction.editReply({
-      embeds: [error('Tickets are not set up. An admin must run `+ticketsetup`.')],
+      embeds: [error('Tickets are not set up. A bot owner must run `+ticketsetup`.')],
     });
   }
 

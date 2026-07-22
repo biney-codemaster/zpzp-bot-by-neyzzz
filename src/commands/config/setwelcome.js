@@ -11,7 +11,7 @@ module.exports = {
   category: 'config',
   aliases: ['welcome'],
   usage: '[channel|off] [message]',
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message, args) {
     if (!args[0]) {
       const guildData = client.db.ensureGuild(message.guild.id);

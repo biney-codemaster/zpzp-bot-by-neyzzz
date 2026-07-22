@@ -1,7 +1,7 @@
 const { parseRole } = require('../../utils/helpers');
 const { success, error } = require('../../utils/embeds');
 module.exports = {
-  name: 'setmodrole', description: 'Set the bot mod role', category: 'config', usage: '<role|off>', permLevel: 'admin',
+  name: 'setmodrole', description: 'Set the bot mod role', category: 'config', usage: '<role|off>', permLevel: 'owner',
   async execute(client, message, args) {
     if (!args[0]) return message.reply({ embeds: [error('Usage: `+setmodrole @Mod` / `off`')] });
     if (['off', 'none', 'disable'].includes(args[0].toLowerCase())) {

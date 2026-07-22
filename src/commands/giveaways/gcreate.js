@@ -11,7 +11,7 @@ module.exports = {
   category: 'giveaways',
   aliases: ['giveaway'],
   usage: '',
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message) {
     const draft = defaultDraft(message.channel.id);
     setDraft(client, message.guild.id, message.author.id, draft);

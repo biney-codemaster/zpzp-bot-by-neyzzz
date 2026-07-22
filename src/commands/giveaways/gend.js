@@ -6,7 +6,7 @@ module.exports = {
   description: 'End a giveaway now',
   category: 'giveaways',
   usage: '[message_id]',
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message, args) {
     const id = args[0] || message.reference?.messageId;
     if (!id) {

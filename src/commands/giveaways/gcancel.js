@@ -7,7 +7,7 @@ module.exports = {
   category: 'giveaways',
   aliases: ['gabort'],
   usage: '[message_id]',
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message, args) {
     const id = args[0] || message.reference?.messageId;
     if (!id) {

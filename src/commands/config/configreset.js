@@ -13,7 +13,7 @@ module.exports = {
   category: 'config',
   aliases: ['resetconfig'],
   usage: '',
-  permLevel: 'admin',
+  permLevel: 'owner',
   cooldown: 10,
   async execute(client, message) {
     const confirm = new ButtonBuilder()
@@ -36,7 +36,7 @@ module.exports = {
           .setDescription(
             [
               'This will reset **all** server settings to defaults:',
-              'prefix, staff roles, modlog, welcome, leave, autorole, tickets, automod, and giveaway defaults.',
+              'prefix, mod role, modlog, welcome, leave, autorole, tickets, automod, and giveaway defaults.',
               '',
               'This cannot be undone.',
             ].join('\n')

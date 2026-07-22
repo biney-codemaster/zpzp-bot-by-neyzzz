@@ -1,7 +1,7 @@
 const { parseChannel } = require('../../utils/helpers');
 const { success } = require('../../utils/embeds');
 module.exports = {
-  name: 'setmodlog', description: 'Set the moderation log channel', category: 'config', usage: '<channel|off>', permLevel: 'admin',
+  name: 'setmodlog', description: 'Set the moderation log channel', category: 'config', usage: '<channel|off>', permLevel: 'owner',
   async execute(client, message, args) {
     if (['off', 'none', 'disable'].includes((args[0] || '').toLowerCase())) {
       client.db.updateGuild(message.guild.id, { modlog_channel: null });

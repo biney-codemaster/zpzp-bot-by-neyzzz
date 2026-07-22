@@ -810,9 +810,9 @@ async function handleGiveawayLeave(client, interaction) {
 
 async function handleGiveawayCreate(client, interaction) {
   const guildData = client.db.ensureGuild(interaction.guild.id);
-  if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+  if (!hasLevel(interaction.member, 'owner', guildData, client.config.ownerIds)) {
     return interaction.reply({
-      embeds: [error('Admin permission required.')],
+      embeds: [error('Bot owner permission required.')],
       ephemeral: true,
     });
   }
@@ -1302,9 +1302,9 @@ async function handleTicketSetup(client, interaction) {
     interaction.customId === 'tsetup_panel_text_modal'
   ) {
     const guildData = client.db.ensureGuild(interaction.guild.id);
-    if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+    if (!hasLevel(interaction.member, 'owner', guildData, client.config.ownerIds)) {
       return interaction.reply({
-        embeds: [error('Admin permission required.')],
+        embeds: [error('Bot owner permission required.')],
         ephemeral: true,
       });
     }
@@ -1347,9 +1347,9 @@ async function handleTicketSetup(client, interaction) {
   }
 
   const guildData = client.db.ensureGuild(interaction.guild.id);
-  if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+  if (!hasLevel(interaction.member, 'owner', guildData, client.config.ownerIds)) {
     return interaction.reply({
-      embeds: [error('Admin permission required.')],
+      embeds: [error('Bot owner permission required.')],
       ephemeral: true,
     });
   }
@@ -1532,11 +1532,11 @@ async function handleTicketSetup(client, interaction) {
   }
 }
 
-async function ensureConfigAdmin(client, interaction) {
+async function ensureConfigOwner(client, interaction) {
   const guildData = client.db.ensureGuild(interaction.guild.id);
-  if (!hasLevel(interaction.member, 'admin', guildData, client.config.ownerIds)) {
+  if (!hasLevel(interaction.member, 'owner', guildData, client.config.ownerIds)) {
     await interaction.reply({
-      embeds: [error('Admin permission required.')],
+      embeds: [error('Bot owner permission required.')],
       ephemeral: true,
     });
     return null;
@@ -1546,7 +1546,7 @@ async function ensureConfigAdmin(client, interaction) {
 
 async function handleWelcomeSetup(client, interaction) {
   if (interaction.isModalSubmit() && interaction.customId === 'wsetup_message_modal') {
-    if (!(await ensureConfigAdmin(client, interaction))) return;
+    if (!(await ensureConfigOwner(client, interaction))) return;
     const text = interaction.fields.getTextInputValue('welcome_message').trim();
     if (!text) {
       return interaction.reply({
@@ -1574,7 +1574,7 @@ async function handleWelcomeSetup(client, interaction) {
       ephemeral: true,
     });
   }
-  if (!(await ensureConfigAdmin(client, interaction))) return;
+  if (!(await ensureConfigOwner(client, interaction))) return;
 
   if (action === 'wsetup_close') {
     return interaction.update({
@@ -1645,7 +1645,7 @@ async function handleWelcomeSetup(client, interaction) {
 
 async function handleLeaveSetup(client, interaction) {
   if (interaction.isModalSubmit() && interaction.customId === 'lsetup_message_modal') {
-    if (!(await ensureConfigAdmin(client, interaction))) return;
+    if (!(await ensureConfigOwner(client, interaction))) return;
     const text = interaction.fields.getTextInputValue('leave_message').trim();
     if (!text) {
       return interaction.reply({
@@ -1673,7 +1673,7 @@ async function handleLeaveSetup(client, interaction) {
       ephemeral: true,
     });
   }
-  if (!(await ensureConfigAdmin(client, interaction))) return;
+  if (!(await ensureConfigOwner(client, interaction))) return;
 
   if (action === 'lsetup_close') {
     return interaction.update({
@@ -1744,7 +1744,7 @@ async function handleLeaveSetup(client, interaction) {
 
 async function handleAutomodSetup(client, interaction) {
   if (interaction.isModalSubmit()) {
-    if (!(await ensureConfigAdmin(client, interaction))) return;
+    if (!(await ensureConfigOwner(client, interaction))) return;
 
     if (interaction.customId === 'asetup_badword_modal') {
       const word = interaction.fields
@@ -1811,7 +1811,7 @@ async function handleAutomodSetup(client, interaction) {
       ephemeral: true,
     });
   }
-  if (!(await ensureConfigAdmin(client, interaction))) return;
+  if (!(await ensureConfigOwner(client, interaction))) return;
 
   const refresh = () => {
     const data = client.db.ensureGuild(interaction.guild.id);
@@ -2069,7 +2069,7 @@ async function handleConfigReset(client, interaction) {
       ephemeral: true,
     });
   }
-  if (!(await ensureConfigAdmin(client, interaction))) return;
+  if (!(await ensureConfigOwner(client, interaction))) return;
 
   if (action === 'cfgreset_cancel') {
     return interaction.update({

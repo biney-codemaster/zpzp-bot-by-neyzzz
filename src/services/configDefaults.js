@@ -35,7 +35,6 @@ const DEFAULT_LEAVE = {
 function fullConfigReset() {
   return {
     prefix: config.prefix,
-    admin_role: null,
     mod_role: null,
     modlog_channel: null,
     ...DEFAULT_WELCOME,

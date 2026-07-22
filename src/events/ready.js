@@ -7,7 +7,9 @@ module.exports = {
   once: true,
   async execute(client) {
     console.log(`[READY] Logged in as ${client.user.tag}`);
-    console.log(`[READY] ${client.guilds.cache.size} guild(s) • ${client.commands.size} commands`);
+    console.log(
+      `[READY] ${client.guilds.cache.size} guild(s) • ${client.commands.size} commands • ${client.config.ownerIds.length} owner(s)`
+    );
 
     const setPresence = () => {
       client.user.setPresence({

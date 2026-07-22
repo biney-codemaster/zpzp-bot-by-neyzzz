@@ -14,7 +14,7 @@ module.exports = {
   description: 'Ping stored winners of an ended giveaway',
   category: 'giveaways',
   usage: '[message_id]',
-  permLevel: 'admin',
+  permLevel: 'owner',
   async execute(client, message, args) {
     const id = args[0] || message.reference?.messageId;
     if (!id) {
