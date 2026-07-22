@@ -2,7 +2,7 @@ const { PermissionFlagsBits } = require('discord.js');
 const { parseRole } = require('../../utils/helpers');
 const { success, error } = require('../../utils/embeds');
 module.exports = {
-  name: 'setautorole', description: 'Set the autorole on join', category: 'config', usage: '<role|off>', permLevel: 'admin',
+  name: 'setautorole', description: 'Set the autorole on join', category: 'config', usage: '<role|off>', permLevel: 'owner',
   botPermissions: [PermissionFlagsBits.ManageRoles],
   async execute(client, message, args) {
     if (!args[0]) return message.reply({ embeds: [error('Usage: `+setautorole @Member` / `off`')] });

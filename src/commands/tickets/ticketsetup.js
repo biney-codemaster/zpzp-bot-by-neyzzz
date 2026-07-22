@@ -10,7 +10,7 @@ module.exports = {
   category: 'tickets',
   aliases: ['ticketssetup', 'setuptickets'],
   usage: '',
-  permLevel: 'admin',
+  permLevel: 'owner',
   botPermissions: [PermissionFlagsBits.ManageChannels],
   cooldown: 5,
   async execute(client, message) {

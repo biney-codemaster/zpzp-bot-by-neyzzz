@@ -1,31 +1,22 @@
-const { PermissionFlagsBits } = require('discord.js');
-
-/** @typedef {'user'|'mod'|'admin'|'owner'} PermLevel */
+/** @typedef {'user'|'mod'|'owner'} PermLevel */
 
 const LEVELS = {
   user: 1,
   mod: 2,
-  admin: 3,
-  owner: 4,
+  owner: 3,
 };
 
 /**
  * Resolve a member's custom permission level.
- * Bootstrap: Discord Admin / guild owner count as bot admin
- * until custom roles are configured.
+ * - owner: bot owners (OWNER_IDS + DB owners)
+ * - mod: configured mod role
+ * - user: everyone else
+ *
+ * Discord Administrator / guild owner no longer grant bot admin access.
  */
 function getMemberLevel(member, guildData, ownerIds = []) {
   if (!member) return LEVELS.user;
   if (ownerIds.includes(member.id)) return LEVELS.owner;
-  if (member.id === member.guild.ownerId) return LEVELS.admin;
-
-  if (member.permissions.has(PermissionFlagsBits.Administrator)) {
-    return LEVELS.admin;
-  }
-
-  if (guildData?.admin_role && member.roles.cache.has(guildData.admin_role)) {
-    return LEVELS.admin;
-  }
 
   if (guildData?.mod_role && member.roles.cache.has(guildData.mod_role)) {
     return LEVELS.mod;
@@ -35,7 +26,9 @@ function getMemberLevel(member, guildData, ownerIds = []) {
 }
 
 function hasLevel(member, required, guildData, ownerIds = []) {
-  const need = LEVELS[required] ?? LEVELS.user;
+  // Legacy: treat old "admin" requirement as owner
+  const key = required === 'admin' ? 'owner' : required;
+  const need = LEVELS[key] ?? LEVELS.user;
   return getMemberLevel(member, guildData, ownerIds) >= need;
 }
 

@@ -12,9 +12,9 @@ const CATEGORIES = [
   { id: 'moderation', label: 'Moderation', key: 'moderation', description: 'Sanctions and server management' },
   { id: 'utility', label: 'Utility', key: 'utility', description: 'Info and everyday tools' },
   { id: 'fun', label: 'Fun', key: 'fun', description: 'Games and fun commands' },
-  { id: 'tickets', label: 'Tickets', key: 'tickets', description: 'Support tickets' },
-  { id: 'giveaways', label: 'Giveaways', key: 'giveaways', description: 'Contests and draws' },
-  { id: 'config', label: 'Config', key: 'config', description: 'Bot settings' },
+  { id: 'tickets', label: 'Tickets', key: 'tickets', description: 'Support tickets and staff tools' },
+  { id: 'giveaways', label: 'Giveaways', key: 'giveaways', description: 'Create and manage giveaways' },
+  { id: 'config', label: 'Config', key: 'config', description: 'Menus and server settings' },
   { id: 'admin', label: 'Admin', key: 'admin', description: 'Bot owner commands', ownerOnly: true },
 ];
 
@@ -68,6 +68,8 @@ function buildHomeEmbed(client, user, prefix) {
         '',
         'Pick a category from the menu below.',
         `Command details: \`${prefix}help <command>\``,
+        '',
+        'Commands shown without arguments open a menu or run as-is.',
       ].join('\n')
     )
     .addFields({
@@ -85,6 +87,11 @@ function buildHomeEmbed(client, user, prefix) {
       iconURL: user.displayAvatarURL({ size: 64 }),
     })
     .setTimestamp();
+}
+
+function formatUsage(prefix, command) {
+  const args = (command.usage || '').trim();
+  return args ? `${prefix}${command.name} ${args}` : `${prefix}${command.name}`;
 }
 
 function buildCategoryEmbed(client, user, prefix, categoryId) {
@@ -112,8 +119,7 @@ function buildCategoryEmbed(client, user, prefix, categoryId) {
   let chunk = '';
   let part = 1;
   for (const cmd of commands) {
-    const usage = cmd.usage ? ` ${cmd.usage}` : '';
-    const line = `> \`${prefix}${cmd.name}${usage}\`\n${cmd.description || '-'}\n\n`;
+    const line = `> \`${formatUsage(prefix, cmd)}\`\n${cmd.description || '-'}\n\n`;
     if ((chunk + line).length > 1000) {
       embed.addFields({ name: part === 1 ? 'Commands' : 'Continued', value: chunk.trimEnd() });
       chunk = line;
@@ -140,7 +146,7 @@ function buildCommandEmbed(client, command, prefix) {
     .addFields(
       {
         name: 'Usage',
-        value: `\`${prefix}${command.name}${command.usage ? ` ${command.usage}` : ''}\``,
+        value: `\`${formatUsage(prefix, command)}\``,
       },
       {
         name: 'Aliases',

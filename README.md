@@ -12,10 +12,11 @@ White embeds, custom staff permissions, interactive help menu, custom emojis via
 | Automod | anti-link, anti-spam, bad words |
 | Welcome | welcome / leave / autorole |
 | Tickets | panel button, staff controls, HTML transcript, logs |
-| Giveaways | gstart / gend / greroll (Enter button) |
-| Fun | 8ball, meme, cat/dog, rps… |
-| Utility | interactive help, info, poll, remind, afk, snipe… |
-| Config | prefix, staff roles, modlog, automod… |
+| Giveaways | gcreate, gend, greroll, Enter/Leave buttons, requirements |
+| Fun | 8ball, meme, cat/dog, trivia, hangman, ttt, leaderboard… |
+| Utility | interactive help, enriched info, button polls, reminders, translate, weather… |
+| Config | Menus: welcome, leave, automod, prefix, mod role… |
+| Admin | owners, restart, presence, shutdown, eval… |
 
 **Not included:** economy, levels, suggestions, music.
 
@@ -34,13 +35,16 @@ Use Discord custom emoji format `<:name:id>` / `<a:name:id>`, or leave `null`.
 
 | Level | Who |
 |---|---|
-| `owner` | IDs in `OWNER_IDS` |
-| `admin` | Bot admin role **or** Discord Admin / guild owner |
-| `mod` | Bot mod role (+ admin) |
+| `owner` | `OWNER_IDS` (env) + owners added with `+addowner` |
+| `mod` | Bot mod role (`+setmodrole`) |
 | `user` | Everyone |
 
+Config / tickets / giveaways require **bot owner**. Moderation uses the mod role.
+
 ```text
-+setadminrole @Admin
++owners
++addowner @user
++removeowner @user
 +setmodrole @Mod
 +setmodlog #logs
 ```
@@ -57,11 +61,10 @@ Use Discord custom emoji format `<:name:id>` / `<a:name:id>`, or leave `null`.
 
 ```text
 +help
-+setadminrole @Admin
++owners
 +setmodrole @Staff
 +setmodlog #mod-logs
-+setwelcome #welcome Welcome {user} to {server}!
++setwelcome
 +ticketsetup
-+automod antilink on
-+automod antispam on
++automod
 ```

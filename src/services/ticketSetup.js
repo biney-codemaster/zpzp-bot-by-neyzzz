@@ -5,12 +5,21 @@ const {
   ChannelSelectMenuBuilder,
   ChannelType,
   EmbedBuilder,
+  ModalBuilder,
   RoleSelectMenuBuilder,
   StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require('discord.js');
 const { color } = require('../utils/embeds');
 const { applyComponentEmoji, withEmoji } = require('../utils/emoji');
-const { panelComponents } = require('./tickets');
+const {
+  panelComponents,
+  DEFAULT_PANEL_TITLE,
+  DEFAULT_PANEL_DESCRIPTION,
+  getPanelTitle,
+  getPanelDescription,
+} = require('./tickets');
 
 function statusLine(ok, value) {
   return ok ? value : '`Not set`';
@@ -28,6 +37,8 @@ function buildSetupEmbed(guild, guildData) {
     : null;
 
   const ready = Boolean(category && support);
+  const panelTitle = getPanelTitle(guildData);
+  const panelDescription = getPanelDescription(guildData);
 
   return new EmbedBuilder()
     .setColor(color())
@@ -55,8 +66,18 @@ function buildSetupEmbed(guild, guildData) {
         inline: true,
       },
       {
+        name: 'Panel title',
+        value: panelTitle.slice(0, 256),
+        inline: true,
+      },
+      {
         name: 'Status',
         value: ready ? '`Ready to post`' : '`Incomplete`',
+        inline: true,
+      },
+      {
+        name: 'Panel text',
+        value: panelDescription.slice(0, 1024),
         inline: false,
       }
     )
@@ -83,6 +104,11 @@ function mainMenu(userId) {
         label: 'Log channel',
         value: 'logs',
         description: 'Open / close / delete logs',
+      },
+      {
+        label: 'Panel text',
+        value: 'panel_text',
+        description: 'Edit panel title and description',
       },
       {
         label: 'Post panel',
@@ -172,6 +198,32 @@ function panelPicker(userId) {
   ];
 }
 
+function panelTextModal(guildData) {
+  return new ModalBuilder()
+    .setCustomId('tsetup_panel_text_modal')
+    .setTitle('Panel text')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('panel_title')
+          .setLabel('Title')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(256)
+          .setValue(getPanelTitle(guildData).slice(0, 256))
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('panel_description')
+          .setLabel('Description')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setMaxLength(2000)
+          .setValue(getPanelDescription(guildData).slice(0, 2000))
+      )
+    );
+}
+
 function pickerEmbed(title, description) {
   return new EmbedBuilder()
     .setColor(color())
@@ -185,15 +237,8 @@ async function postPanel(guild, channel, guildData) {
     embeds: [
       new EmbedBuilder()
         .setColor(color())
-        .setTitle(withEmoji('tickets', 'Support'))
-        .setDescription(
-          [
-            'Need help? Open a private support ticket.',
-            '',
-            'One open ticket per user.',
-            'Staff will respond as soon as possible.',
-          ].join('\n')
-        )
+        .setTitle(withEmoji('tickets', getPanelTitle(guildData)))
+        .setDescription(getPanelDescription(guildData))
         .setFooter({ text: guild.name }),
     ],
     components: panelComponents(),
@@ -211,7 +256,10 @@ module.exports = {
   supportPicker,
   logsPicker,
   panelPicker,
+  panelTextModal,
   pickerEmbed,
   postPanel,
   assertOwner,
+  DEFAULT_PANEL_TITLE,
+  DEFAULT_PANEL_DESCRIPTION,
 };

@@ -8,6 +8,7 @@ const config = require('./config');
 const Database = require('./src/database/Database');
 const { loadCommands } = require('./src/handlers/commandHandler');
 const { loadEvents } = require('./src/handlers/eventHandler');
+const { refreshOwnerIds } = require('./src/services/owners');
 
 if (!config.token) {
   console.error('[FATAL] DISCORD_TOKEN missing. Copy .env.example to .env');
@@ -39,6 +40,8 @@ client.aliases = new Collection();
 client.cooldowns = new Collection();
 client.snipes = new Map();
 client.spamMap = new Map();
+
+refreshOwnerIds(client);
 
 loadCommands(client);
 loadEvents(client);
