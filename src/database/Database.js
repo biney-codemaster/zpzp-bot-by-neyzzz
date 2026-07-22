@@ -127,6 +127,21 @@ class Database {
         added_by TEXT,
         added_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS bot_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS bot_activities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        url TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
     `);
 
     this.#ensureColumn('tickets', 'closed_by', 'TEXT');
@@ -213,6 +228,77 @@ class Database {
     return Boolean(
       this.db.prepare('SELECT id FROM bot_owners WHERE id = ?').get(userId)
     );
+  }
+
+  getBotSetting(key) {
+    const row = this.db
+      .prepare('SELECT value FROM bot_settings WHERE key = ?')
+      .get(key);
+    return row ? row.value : null;
+  }
+
+  setBotSetting(key, value) {
+    this.db
+      .prepare(
+        `INSERT INTO bot_settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      )
+      .run(key, String(value));
+  }
+
+  listActivities({ enabledOnly = false } = {}) {
+    if (enabledOnly) {
+      return this.db
+        .prepare(
+          `SELECT * FROM bot_activities
+           WHERE enabled = 1
+           ORDER BY sort_order ASC, id ASC`
+        )
+        .all();
+    }
+    return this.db
+      .prepare(
+        `SELECT * FROM bot_activities
+         ORDER BY sort_order ASC, id ASC`
+      )
+      .all();
+  }
+
+  getActivity(id) {
+    return this.db.prepare('SELECT * FROM bot_activities WHERE id = ?').get(id);
+  }
+
+  addActivity({ type, name, url = null, enabled = 1 }) {
+    const maxOrder =
+      this.db
+        .prepare('SELECT MAX(sort_order) AS m FROM bot_activities')
+        .get()?.m ?? 0;
+    return this.db
+      .prepare(
+        `INSERT INTO bot_activities (type, name, url, enabled, sort_order, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(type, name, url, enabled ? 1 : 0, maxOrder + 1, Date.now())
+      .lastInsertRowid;
+  }
+
+  updateActivity(id, data) {
+    const keys = Object.keys(data);
+    if (!keys.length) return this.getActivity(id);
+    const sets = keys.map((k) => `${k} = ?`).join(', ');
+    this.db
+      .prepare(`UPDATE bot_activities SET ${sets} WHERE id = ?`)
+      .run(...keys.map((k) => data[k]), id);
+    return this.getActivity(id);
+  }
+
+  removeActivity(id) {
+    return this.db.prepare('DELETE FROM bot_activities WHERE id = ?').run(id)
+      .changes;
+  }
+
+  clearActivities() {
+    return this.db.prepare('DELETE FROM bot_activities').run().changes;
   }
 
   addWarning(guildId, userId, moderatorId, reason) {

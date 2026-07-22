@@ -15,7 +15,8 @@ White embeds, custom staff permissions, interactive help menu, custom emojis via
 | Giveaways | gcreate, gend, greroll, Enter/Leave buttons, requirements |
 | Fun | 8ball, meme, cat/dog, trivia, hangman, ttt, leaderboard… |
 | Utility | interactive help, enriched info, button polls, reminders, translate, weather… |
-| Config | prefix, staff roles, modlog, automod… |
+| Config | Menus: welcome, leave, automod, prefix, mod role… |
+| Admin | owners, restart, presence, shutdown, eval… |
 
 **Not included:** economy, levels, suggestions, music.
 

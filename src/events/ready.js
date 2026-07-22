@@ -1,6 +1,10 @@
-const { ActivityType, EmbedBuilder, Events } = require('discord.js');
+const { EmbedBuilder, Events } = require('discord.js');
 const { endGiveaway } = require('../utils/giveaways');
 const { color } = require('../utils/embeds');
+const { withEmoji } = require('../utils/emoji');
+const { consumeRestartFlag } = require('../services/restart');
+const { startPresenceRotation } = require('../services/presence');
+const { formatDuration } = require('../utils/helpers');
 
 module.exports = {
   name: Events.ClientReady,
@@ -11,14 +15,61 @@ module.exports = {
       `[READY] ${client.guilds.cache.size} guild(s) • ${client.commands.size} commands • ${client.config.ownerIds.length} owner(s)`
     );
 
-    const setPresence = () => {
-      client.user.setPresence({
-        activities: [{ name: '+help', type: ActivityType.Watching }],
-        status: 'online',
-      });
-    };
-    setPresence();
-    setInterval(setPresence, 15 * 60 * 1000);
+    startPresenceRotation(client);
+
+    const restartFlag = consumeRestartFlag();
+    if (restartFlag?.channelId) {
+      try {
+        const channel = await client.channels
+          .fetch(restartFlag.channelId)
+          .catch(() => null);
+        if (channel?.isTextBased?.()) {
+          const downtime = restartFlag.at
+            ? formatDuration(Date.now() - restartFlag.at)
+            : null;
+          const embed = new EmbedBuilder()
+            .setColor(color())
+            .setTitle(withEmoji('admin', 'Bot restarted'))
+            .setDescription(
+              [
+                `Connected as **${client.user.tag}**.`,
+                downtime ? `Downtime: **${downtime}**` : null,
+                restartFlag.requestedBy
+                  ? `Requested by <@${restartFlag.requestedBy}>`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join('\n')
+            )
+            .setTimestamp();
+
+          let edited = false;
+          if (restartFlag.messageId) {
+            const old = await channel.messages
+              .fetch(restartFlag.messageId)
+              .catch(() => null);
+            if (old) {
+              await old.edit({ embeds: [embed] }).catch(() => null);
+              edited = true;
+            }
+          }
+          if (!edited) {
+            await channel
+              .send({
+                content: restartFlag.requestedBy
+                  ? `<@${restartFlag.requestedBy}>`
+                  : undefined,
+                embeds: [embed],
+              })
+              .catch(() => null);
+          }
+        }
+      } catch (err) {
+        console.error('[restart:announce]', err);
+      }
+    } else if (process.env.ZPZP_RESTARTED === '1') {
+      console.log('[READY] Process was spawned by +restart');
+    }
 
     setInterval(async () => {
       try {

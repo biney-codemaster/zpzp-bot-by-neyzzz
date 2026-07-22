@@ -121,6 +121,22 @@ const {
   parseJsonArray,
 } = require('../services/automodSetup');
 const { fullConfigReset } = require('../services/configDefaults');
+const {
+  buildPresenceEmbed,
+  mainMenu: presenceMainMenu,
+  statusPicker,
+  activityTypePicker,
+  activityPickMenu,
+  activityNameModal,
+  intervalModal,
+  pickerEmbed: presencePickerEmbed,
+  assertOwner: assertPresenceOwner,
+} = require('../services/presenceSetup');
+const {
+  getPresenceConfig,
+  refreshPresenceRotation,
+} = require('../services/presence');
+const { isOwner } = require('../services/owners');
 
 async function handleConnect4(client, interaction) {
   if (!interaction.isButton() || !interaction.guild) return;
@@ -2097,6 +2113,224 @@ async function handleConfigReset(client, interaction) {
   }
 }
 
+async function handlePresenceSetup(client, interaction) {
+  if (!isOwner(client, interaction.user.id)) {
+    return interaction.reply({
+      embeds: [error('Bot owner permission required.')],
+      ephemeral: true,
+    });
+  }
+
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('presence_add_modal:')) {
+      const type = interaction.customId.split(':')[1];
+      const name = interaction.fields.getTextInputValue('activity_name').trim();
+      if (!name) {
+        return interaction.reply({
+          embeds: [error('Activity text cannot be empty.')],
+          ephemeral: true,
+        });
+      }
+
+      let url = null;
+      if (type === 'Streaming') {
+        url = interaction.fields.getTextInputValue('activity_url').trim();
+        if (!/^https?:\/\/(www\.)?(twitch\.tv|youtube\.com|youtu\.be)\//i.test(url)) {
+          return interaction.reply({
+            embeds: [
+              error(
+                'Streaming URL must be a Twitch or YouTube link.'
+              ),
+            ],
+            ephemeral: true,
+          });
+        }
+      }
+
+      client.db.addActivity({ type, name, url });
+      refreshPresenceRotation(client);
+      return interaction
+        .update({
+          embeds: [buildPresenceEmbed(client)],
+          components: presenceMainMenu(interaction.user.id),
+        })
+        .catch(async () => {
+          await interaction.reply({
+            embeds: [success(`Added **${type}**: \`${name}\``)],
+            ephemeral: true,
+          });
+        });
+    }
+
+    if (interaction.customId === 'presence_interval_modal') {
+      const raw = interaction.fields.getTextInputValue('rotate_seconds').trim();
+      const seconds = Number.parseInt(raw, 10);
+      if (!Number.isFinite(seconds) || seconds < 5 || seconds > 600) {
+        return interaction.reply({
+          embeds: [error('Enter a number between 5 and 600.')],
+          ephemeral: true,
+        });
+      }
+      client.db.setBotSetting('presence_rotate_seconds', String(seconds));
+      refreshPresenceRotation(client);
+      return interaction
+        .update({
+          embeds: [buildPresenceEmbed(client)],
+          components: presenceMainMenu(interaction.user.id),
+        })
+        .catch(async () => {
+          await interaction.reply({
+            embeds: [success(`Rotation interval set to **${seconds}s**.`)],
+            ephemeral: true,
+          });
+        });
+    }
+  }
+
+  const parts = interaction.customId.split(':');
+  const action = parts[0];
+  const ownerId = parts[1];
+
+  if (!assertPresenceOwner(interaction, ownerId)) {
+    return interaction.reply({
+      embeds: [error('Only the command author can use this menu.')],
+      ephemeral: true,
+    });
+  }
+
+  const refresh = () =>
+    interaction.update({
+      embeds: [buildPresenceEmbed(client)],
+      components: presenceMainMenu(ownerId),
+    });
+
+  if (action === 'presence_close') {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(color())
+          .setDescription('Presence setup closed. Run `+presence` to open it again.'),
+      ],
+      components: [],
+    });
+  }
+
+  if (action === 'presence_back') {
+    return refresh();
+  }
+
+  if (action === 'presence_menu' && interaction.isStringSelectMenu()) {
+    const choice = interaction.values[0];
+
+    if (choice === 'status') {
+      return interaction.update({
+        embeds: [
+          presencePickerEmbed(
+            'Set status',
+            'Choose how the bot appears online.'
+          ),
+        ],
+        components: statusPicker(ownerId),
+      });
+    }
+
+    if (choice === 'add') {
+      return interaction.update({
+        embeds: [
+          presencePickerEmbed(
+            'Add activity',
+            'Choose the activity type, then enter the text.'
+          ),
+        ],
+        components: activityTypePicker(ownerId),
+      });
+    }
+
+    if (choice === 'toggle' || choice === 'remove') {
+      const rows = client.db.listActivities();
+      if (!rows.length) {
+        await refresh();
+        return interaction.followUp({
+          embeds: [error('No activities saved yet.')],
+          ephemeral: true,
+        });
+      }
+      return interaction.update({
+        embeds: [
+          presencePickerEmbed(
+            choice === 'toggle' ? 'Toggle activity' : 'Remove activity',
+            choice === 'toggle'
+              ? 'Select an activity to enable or disable.'
+              : 'Select an activity to delete.'
+          ),
+        ],
+        components: activityPickMenu(ownerId, rows, choice),
+      });
+    }
+
+    if (choice === 'interval') {
+      return interaction.showModal(intervalModal(getPresenceConfig(client.db)));
+    }
+
+    if (choice === 'toggle_rotate') {
+      const cfg = getPresenceConfig(client.db);
+      client.db.setBotSetting('presence_rotate', cfg.rotateEnabled ? '0' : '1');
+      refreshPresenceRotation(client);
+      return refresh();
+    }
+
+    if (choice === 'clear') {
+      client.db.clearActivities();
+      refreshPresenceRotation(client);
+      await refresh();
+      return interaction.followUp({
+        embeds: [success('All activities cleared.')],
+        ephemeral: true,
+      });
+    }
+
+    if (choice === 'apply') {
+      refreshPresenceRotation(client);
+      await refresh();
+      return interaction.followUp({
+        embeds: [success('Presence refreshed.')],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (action === 'presence_status' && interaction.isStringSelectMenu()) {
+    client.db.setBotSetting('presence_status', interaction.values[0]);
+    refreshPresenceRotation(client);
+    return refresh();
+  }
+
+  if (action === 'presence_add_type' && interaction.isStringSelectMenu()) {
+    return interaction.showModal(activityNameModal(interaction.values[0]));
+  }
+
+  if (action === 'presence_toggle' && interaction.isStringSelectMenu()) {
+    const id = Number(interaction.values[0]);
+    const row = client.db.getActivity(id);
+    if (!row) {
+      return interaction.reply({
+        embeds: [error('Activity not found.')],
+        ephemeral: true,
+      });
+    }
+    client.db.updateActivity(id, { enabled: row.enabled ? 0 : 1 });
+    refreshPresenceRotation(client);
+    return refresh();
+  }
+
+  if (action === 'presence_remove' && interaction.isStringSelectMenu()) {
+    const id = Number(interaction.values[0]);
+    client.db.removeActivity(id);
+    refreshPresenceRotation(client);
+    return refresh();
+  }
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(client, interaction) {
@@ -2117,6 +2351,17 @@ module.exports = {
         interaction.customId === 'tsetup_panel_text_modal')
     ) {
       return handleTicketSetup(client, interaction);
+    }
+
+    if (
+      (interaction.isStringSelectMenu() ||
+        interaction.isButton() ||
+        interaction.isModalSubmit()) &&
+      (interaction.customId.startsWith('presence_') ||
+        interaction.customId.startsWith('presence_add_modal:') ||
+        interaction.customId === 'presence_interval_modal')
+    ) {
+      return handlePresenceSetup(client, interaction);
     }
 
     if (
