@@ -1,12 +1,15 @@
-const { EmbedBuilder } = require('discord.js');
-const { success, error, info, color } = require('../../utils/embeds');
-const { withEmoji } = require('../../utils/emoji');
+const { success, error, info } = require('../../utils/embeds');
+const {
+  buildAutomodEmbed,
+  mainMenu,
+  parseJsonArray,
+} = require('../../services/automodSetup');
 
 module.exports = {
   name: 'automod',
-  description: 'Configure automod',
+  description: 'Open the automod setup menu',
   category: 'config',
-  usage: '<antilink|antispam|badwords> <on|off> | badwords add/remove/list',
+  usage: '[antilink|antispam|badwords ...] | open menu',
   permLevel: 'admin',
   async execute(client, message, args) {
     const g = client.db.ensureGuild(message.guild.id);
@@ -14,51 +17,66 @@ module.exports = {
     const value = (args[1] || '').toLowerCase();
 
     if (!sub) {
-      let words = [];
-      try { words = JSON.parse(g.badwords || '[]'); } catch { words = []; }
       return message.reply({
-        embeds: [new EmbedBuilder().setColor(color()).setTitle(withEmoji('config', 'Automod')).setDescription(
-          [
-            `Anti-link: **${g.automod_antilink ? 'ON' : 'OFF'}**`,
-            `Anti-spam: **${g.automod_antispam ? 'ON' : 'OFF'}**`,
-            `Bad words: **${g.automod_badwords ? 'ON' : 'OFF'}** (${words.length})`,
-            '',
-            '`+automod antilink on/off`',
-            '`+automod antispam on/off`',
-            '`+automod badwords on/off`',
-            '`+automod badwords add/remove/list <word>`',
-          ].join('\n')
-        )],
+        embeds: [buildAutomodEmbed(message.guild, g)],
+        components: mainMenu(message.author.id),
       });
     }
 
-    if (['antilink', 'antispam', 'badwords'].includes(sub) && ['on', 'off', 'enable', 'disable'].includes(value)) {
+    if (
+      ['antilink', 'antispam', 'badwords'].includes(sub) &&
+      ['on', 'off', 'enable', 'disable'].includes(value)
+    ) {
       const enabled = ['on', 'enable'].includes(value) ? 1 : 0;
-      const key = sub === 'antilink' ? 'automod_antilink' : sub === 'antispam' ? 'automod_antispam' : 'automod_badwords';
+      const key =
+        sub === 'antilink'
+          ? 'automod_antilink'
+          : sub === 'antispam'
+            ? 'automod_antispam'
+            : 'automod_badwords';
       client.db.updateGuild(message.guild.id, { [key]: enabled });
-      return message.reply({ embeds: [success(`**${sub}** -> ${enabled ? 'ON' : 'OFF'}`)] });
+      return message.reply({
+        embeds: [success(`**${sub}** -> ${enabled ? 'ON' : 'OFF'}`)],
+      });
     }
 
     if (sub === 'badwords') {
-      let words = [];
-      try { words = JSON.parse(g.badwords || '[]'); } catch { words = []; }
+      let words = parseJsonArray(g.badwords);
       const action = value;
       const word = args.slice(2).join(' ').toLowerCase();
-      if (action === 'list') return message.reply({ embeds: [info(words.length ? words.map((w) => `\`${w}\``).join(', ') : 'Empty list.', 'Bad words')] });
+      if (action === 'list') {
+        return message.reply({
+          embeds: [
+            info(
+              words.length ? words.map((w) => `\`${w}\``).join(', ') : 'Empty list.',
+              'Bad words'
+            ),
+          ],
+        });
+      }
       if (action === 'add') {
         if (!word) return message.reply({ embeds: [error('Provide a word.')] });
         if (!words.includes(word)) words.push(word);
-        client.db.updateGuild(message.guild.id, { badwords: JSON.stringify(words), automod_badwords: 1 });
+        client.db.updateGuild(message.guild.id, {
+          badwords: JSON.stringify(words),
+          automod_badwords: 1,
+        });
         return message.reply({ embeds: [success(`Added: \`${word}\``)] });
       }
       if (action === 'remove') {
         if (!word) return message.reply({ embeds: [error('Provide a word.')] });
         words = words.filter((w) => w !== word);
-        client.db.updateGuild(message.guild.id, { badwords: JSON.stringify(words) });
+        client.db.updateGuild(message.guild.id, {
+          badwords: JSON.stringify(words),
+        });
         return message.reply({ embeds: [success(`Removed: \`${word}\``)] });
       }
     }
 
-    return message.reply({ embeds: [error('Invalid usage. Run `+automod`.')] });
+    return message.reply({
+      embeds: [
+        error('Invalid usage. Run `+automod` to open the menu.'),
+      ],
+    });
   },
 };

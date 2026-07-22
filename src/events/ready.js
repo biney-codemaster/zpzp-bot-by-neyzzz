@@ -31,10 +31,12 @@ module.exports = {
     setInterval(async () => {
       try {
         for (const r of client.db.getDueReminders()) {
-          client.db.markReminderSent(r.id);
           const channel = await client.channels.fetch(r.channel_id).catch(() => null);
-          if (!channel) continue;
-          await channel
+          if (!channel) {
+            client.db.markReminderSent(r.id);
+            continue;
+          }
+          const sent = await channel
             .send({
               content: `<@${r.user_id}>`,
               embeds: [
@@ -42,10 +44,12 @@ module.exports = {
                   .setColor(color())
                   .setTitle('Reminder')
                   .setDescription(r.content)
+                  .setFooter({ text: `Reminder #${r.id}` })
                   .setTimestamp(),
               ],
             })
             .catch(() => null);
+          if (sent) client.db.markReminderSent(r.id);
         }
       } catch (err) {
         console.error('[reminder]', err);
